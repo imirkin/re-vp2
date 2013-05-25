@@ -1,0 +1,13 @@
+These are tools designed to help with reverse-engineering the VP2
+engine available on NVIDIA NV84-NV98 cards.
+
+h264_player:
+
+  A player that is designed to play back exactly one video, for now:
+  http://www.h264info.com/clips.html, download The Simpsons Movie
+  trailer, and run mplayer -dumpvideo foo.mkv. The resulting
+  stream.dump file is the input file for h264_player.
+
+  Note that it does not do any frame reordering, so the output is very
+  jittery. Also since it doesn't have access to the picinfo, it's
+  hardcoded to the right thing (so other videos are unlikely to play).
