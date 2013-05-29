@@ -97,7 +97,7 @@ new_bo_and_map(struct nouveau_device *dev,
   assert(!nouveau_bo_new(dev, NOUVEAU_BO_VRAM, 0x1000, size, NULL, &ret));
   if (client)
     assert(!nouveau_bo_map(ret, NOUVEAU_BO_RDWR, client));
-  printf("returning map: %llx\n", ret->offset);
+  fprintf(stderr, "returning map: %llx\n", ret->offset);
   nouveau_bufctx_refn(bufctx, 0, ret, NOUVEAU_BO_VRAM | NOUVEAU_BO_RDWR);
   return ret;
 }
@@ -157,19 +157,19 @@ load_bitstream(struct nouveau_bo *data) {
   assert(fstat(fd, &statbuf) == 0);
   assert((addr = mmap(NULL, statbuf.st_size, PROT_READ, MAP_SHARED, fd, 0)));
 
-  arr[0x0   / 4 + 3] = 0x1;
-  arr[0x120 / 4 + 1] = 0x5;
-  arr[0x130 / 4 + 0] = 0x4f;
-  arr[0x130 / 4 + 1] = 0x6;
-  arr[0x130 / 4 + 3] = 0x6;
-  arr[0x140 / 4 + 0] = 0x1;
-  arr[0x140 / 4 + 2] = 0x1;
-  arr[0x140 / 4 + 3] = 0x21;
-  arr[0x150 / 4 + 3] = 0x1;
+  arr[0x0   / 4 + 0] = 0x1;
+  arr[0x120 / 4 + 2] = 0x5;
+  arr[0x130 / 4 + 0] = 0x6;
+  arr[0x130 / 4 + 2] = 0x6;
+  arr[0x130 / 4 + 3] = 0x4f;
+  arr[0x140 / 4 + 0] = 0x21;
+  arr[0x140 / 4 + 1] = 0x1;
+  arr[0x140 / 4 + 3] = 0x1;
+  arr[0x150 / 4 + 0] = 0x1;
   arr[0x1e0 / 4 + 2] = 0x1;
+  arr[0x320 / 4 + 0] = 0x10000;
   arr[0x320 / 4 + 1] = 0x10000;
   arr[0x320 / 4 + 2] = 0x10000;
-  arr[0x320 / 4 + 3] = 0x10000;
 
   arr2[1] = statbuf.st_size + 3 + 16;
 
@@ -274,7 +274,7 @@ int main() {
   vp_params = new_bo_and_map(dev, client, 0x2000);
 
   for (i = 0; i < 2; i++) {
-    frames[i] = new_bo_and_map(dev, client, 0x10400);
+    frames[i] = new_bo_and_map(dev, client, 0x104000);
   }
 
   /* Setup DMA for the SEMAPHORE logic */
@@ -390,7 +390,7 @@ int main() {
   PUSH_KICK (push);
 
   /* VP step 1 */
-  BEGIN_NV04(push, 2, 0x400, 14);
+  BEGIN_NV04(push, 2, 0x400, 15);
   PUSH_DATA (push, 1);
   PUSH_DATA (push, 0xaa0); /* related to aa000 above? */
   PUSH_DATA (push, 0x3987654);
@@ -404,6 +404,7 @@ int main() {
   PUSH_DATA (push, (vpring->offset >> 8) + 0x4f61);
   PUSH_DATA (push, 0);
   PUSH_DATA (push, 0x100008);
+  PUSH_DATA (push, frames[0]->offset >> 8);
   PUSH_DATA (push, 0);
 
   BEGIN_NV04(push, 2, 0x620, 2);
@@ -415,8 +416,8 @@ int main() {
   PUSH_KICK (push);
 
   sleep(1);
-  printf("%x\n", *(uint32_t *)bsp_sem->map);
-
+  fprintf(stderr, "%x\n", *(uint32_t *)bsp_sem->map);
+  write(1, frames[0]->map, frames[0]->size);
   return 0;
 
 
@@ -440,7 +441,7 @@ int main() {
 
   sleep(1);
 
-  printf("%x\n", *(uint32_t *)bsp_sem->map);
+  fprintf(stderr, "%x\n", *(uint32_t *)bsp_sem->map);
   //write(1, frames[0]->map, frames[0]->size);
 
   return 0;
