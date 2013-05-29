@@ -113,9 +113,22 @@ int main() {
   printf("bo offset: %lx\n", sem->offset);
   printf("bo handle: %x\n", sem->handle);
 
-  assert(!nouveau_bo_map(sem, NOUVEAU_BO_RD, client));
+  assert(!nouveau_bo_map(sem, NOUVEAU_BO_RD | NOUVEAU_BO_WR, client));
+
+  /*
+  struct nouveau_pushbuf_refn refs[] = {
+    { sem, NOUVEAU_BO_RDWR }
+  };
+  assert(!nouveau_pushbuf_refn(push, refs, 1));
+  */
 
   printf("bo map: %p\n", sem->map);
+
+  uint32_t *map = sem->map;
+  *map = 0xdeadbeef;
+
+  BEGIN_NV04(push, 0, 0x60, 1);
+  PUSH_DATA (push, nv04_data.vram);
 
   /* Bind the BSP to the fifo */
   BEGIN_NV04(push, 1, 0, 1);
@@ -126,6 +139,9 @@ int main() {
   for (i = 0; i < 11; i++)
     PUSH_DATA(push, nv04_data.vram);
 
+  BEGIN_NV04(push, 1, 0x1b8, 1);
+  PUSH_DATA (push, nv04_data.vram);
+
   /* Set the semaphore */
   BEGIN_NV04(push, 1, 0x610, 3);
   PUSH_DATAh(push, sem->offset);
@@ -135,11 +151,23 @@ int main() {
   /* Write abce to the semaphore location */
   BEGIN_NV04(push, 1, 0x304, 1);
   PUSH_DATA (push, 0x101);
+
+  BEGIN_NV04(push, 1, 0x80, 1);
+  PUSH_DATA (push, 0);
   PUSH_KICK (push);
 
-  uint32_t *map = sem->map;
-  printf("%x %x %x %x\n", map[0], map[1], map[2], map[3]);
+  /* Wait for abce to come out */
+  BEGIN_NV04(push, 4, 0x10, 4);
+  PUSH_DATAh(push, sem->offset);
+  PUSH_DATA (push, sem->offset);
+  PUSH_DATA (push, 0xabce);
+  PUSH_DATA (push, 1); /* Wait for equal */
+  PUSH_KICK (push);
+
+  nouveau_bo_wait(sem, NOUVEAU_BO_RDWR, client);
+
+  printf("%x\n", *map);
   usleep(10000);
-  printf("%x %x %x %x\n", map[0], map[1], map[2], map[3]);
+  printf("%x\n", *map);
   return 0;
 }
