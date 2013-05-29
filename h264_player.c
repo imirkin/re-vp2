@@ -32,6 +32,7 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include <stdarg.h>
+#include <stdlib.h>
 
 #include <X11/Xlib.h>
 #include <vdpau/vdpau.h>
@@ -113,15 +114,18 @@ void mark(const char *fmt, ...) {
 int main(int argc, char **argv) {
   int width = 1280, height = 544;
   Display *display = XOpenDisplay(NULL);
+  /*
   Window root = XDefaultRootWindow(display);
   Window window = XCreateSimpleWindow(
       display, root, 0, 0, 1280, 544, 0, 0, 0);
   XSelectInput(display, window, ExposureMask | KeyPressMask);
   XMapWindow(display, window);
   XSync(display, 0);
+  */
 
   VdpDevice dev;
 
+  mark("vdp_device_create_x11\n");
   int ret = vdp_device_create_x11(display, 0, &dev, &vdp_get_proc_address);
   assert(ret == VDP_STATUS_OK);
 
@@ -180,17 +184,19 @@ int main(int argc, char **argv) {
   assert(ret == VDP_STATUS_OK);
 
   int i;
-  for (i = 0; i < 16; i++) {
+  for (i = 0; i < 1; i++) {
     mark("vdp_video_surface_create: %d\n", i);
     ret = vdp_video_surface_create(dev, VDP_CHROMA_TYPE_420, 1280, 544, &video[i]);
     assert(ret == VDP_STATUS_OK);
     mark(" <-- %d\n", video[i]);
   }
 
+
   mark("vdp_output_surface_create\n");
-  ret = vdp_output_surface_create(dev, VDP_COLOR_TABLE_FORMAT_B8G8R8X8, 1280, 544, &output);
+  ret = vdp_output_surface_create(dev, VDP_RGBA_FORMAT_B8G8R8A8, 1280, 544, &output);
   assert(ret == VDP_STATUS_OK);
 
+/*
   mark("vdp_presentation_queue_target_create_x11\n");
   ret = vdp_presentation_queue_target_create_x11(dev, window, &target);
   assert(ret == VDP_STATUS_OK);
@@ -198,10 +204,11 @@ int main(int argc, char **argv) {
   mark("vdp_presentation_queue_create\n");
   ret = vdp_presentation_queue_create(dev, target, &queue);
   assert(ret == VDP_STATUS_OK);
-
+*/
   mark("vdp_video_mixer_create\n");
   ret = vdp_video_mixer_create(dev, sizeof(mixer_features)/sizeof(mixer_features[0]), mixer_features, sizeof(mixer_params)/sizeof(mixer_params[0]), mixer_params, mixer_param_vals, &mixer);
   assert(ret == VDP_STATUS_OK);
+
 
   assert(argc > 1);
   int fd = open(argv[1], O_RDONLY);
@@ -262,10 +269,11 @@ int main(int argc, char **argv) {
     info.referenceFrames[j].surface = VDP_INVALID_HANDLE;
 
 
-  VdpTime t;
   mark("vdp_presentation_queue_get_time\n");
+  /*VdpTime t;
   ret = vdp_presentation_queue_get_time(queue, &t);
   assert(ret == VDP_STATUS_OK);
+  */
   //fprintf(stderr, "Start time: %ld\n", t);
 
   int vframe = 0;
@@ -313,6 +321,7 @@ int main(int argc, char **argv) {
     mark("vdp_decoder_render: %d\n", video[vframe]);
     ret = vdp_decoder_render(dec, video[vframe], (void*)&info, 2, buffer);
     assert(ret == VDP_STATUS_OK);
+
     mark("vdp_video_mixer_render\n");
     ret = vdp_video_mixer_render(
         mixer,
@@ -327,12 +336,29 @@ int main(int argc, char **argv) {
         NULL,
         0, NULL);
     assert(ret == VDP_STATUS_OK);
+/*
     t += 1000000000ULL / 24;
     mark("vdp_presentation_queue_display\n");
     ret = vdp_presentation_queue_display(queue, output, 1280, 544, t);
     assert(ret == VDP_STATUS_OK);
+    */
 
     addr += size;
+
+    uint32_t pitches[1] = {1280 * 4/*, 640, 640*/};
+    uint8_t *data[1];
+    for (i = 0; i < 1; i++) {
+      data[i] = malloc(1280 * 544 * 4);// (i ? 4 : 1));
+      assert(data[i]);
+    }
+    ret = vdp_output_surface_get_bits_native(output, NULL, (void **)data, pitches);
+    assert(ret == VDP_STATUS_OK);
+
+    /* for (i = 0; i < 1280 * 544; i++) { */
+    /*   uint32_t *pos = data[0]; */
+    /*   pos += i; */
+    /*   write(1, (void *)pos, 3); */
+    /* } */
 
     if (info.is_reference) {
       for (j = 5; j > 0; --j)
@@ -344,6 +370,7 @@ int main(int argc, char **argv) {
       info.referenceFrames[0].bottom_is_reference = 1;
     }
     vframe = (vframe + 1) % 16;
+    break;
   }
 
   return 0;
