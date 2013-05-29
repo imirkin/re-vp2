@@ -88,6 +88,8 @@ disconnect:
    xcb_disconnect(xcb_conn);
 }
 
+static struct nouveau_bufctx *bufctx;
+
 static struct nouveau_bo *
 new_bo_and_map(struct nouveau_device *dev,
                struct nouveau_client *client, long size) {
@@ -96,12 +98,13 @@ new_bo_and_map(struct nouveau_device *dev,
   if (client)
     assert(!nouveau_bo_map(ret, NOUVEAU_BO_RDWR, client));
   printf("returning map: %llx\n", ret->offset);
+  nouveau_bufctx_refn(bufctx, 0, ret, NOUVEAU_BO_VRAM | NOUVEAU_BO_RDWR);
   return ret;
 }
 
 static void
 load_bsp_fw(struct nouveau_bo *fw) {
-  int i, fd = open("/lib/firmware/nouveau/nv84_bsp-h264", O_RDONLY);
+  int fd = open("/lib/firmware/nouveau/nv84_bsp-h264", O_RDONLY);
   struct stat statbuf;
   void *addr;
   assert(fd);
@@ -109,9 +112,8 @@ load_bsp_fw(struct nouveau_bo *fw) {
   addr = mmap(NULL, statbuf.st_size, PROT_READ, MAP_SHARED, fd, 0);
   assert(addr);
 
-  // XXX memcpy? ideally, use M2MF. look into helpers later.
-  for (i = 0; i < statbuf.st_size / 4; i++)
-    *((uint32_t *)fw->map + i) = *((uint32_t *)addr + i);
+  memcpy(fw->map, addr, statbuf.st_size);
+  memset(fw->map + statbuf.st_size, 0, fw->size - statbuf.st_size);
 
   munmap(addr, statbuf.st_size);
   close(fd);
@@ -119,18 +121,16 @@ load_bsp_fw(struct nouveau_bo *fw) {
 
 static void
 load_vp_fw(struct nouveau_bo *fw) {
-  int fd, i;
+  int fd;
   struct stat statbuf;
   void *addr;
 
   assert((fd = open("/lib/firmware/nouveau/nv84_vp-h264-1", O_RDONLY)));
   assert(fstat(fd, &statbuf) == 0);
-  assert(statbuf.st_size < 0x1ff00);
+  assert(statbuf.st_size < 0x1f400);
   assert((addr = mmap(NULL, statbuf.st_size, PROT_READ, MAP_SHARED, fd, 0)));
 
-  // XXX memcpy? ideally, use M2MF. look into helpers later.
-  for (i = 0; i < statbuf.st_size / 4; i++)
-    *((uint32_t *)fw->map + i) = *((uint32_t *)addr + i);
+  memcpy(fw->map, addr, statbuf.st_size);
 
   munmap(addr, statbuf.st_size);
   close(fd);
@@ -139,9 +139,7 @@ load_vp_fw(struct nouveau_bo *fw) {
   assert(fstat(fd, &statbuf) == 0);
   assert((addr = mmap(NULL, statbuf.st_size, PROT_READ, MAP_SHARED, fd, 0)));
 
-  // XXX memcpy? ideally, use M2MF. look into helpers later.
-  for (i = 0; i < statbuf.st_size / 4; i++)
-    *((uint32_t *)fw->map + 0x1FF00 / 4 + i) = *((uint32_t *)addr + i);
+  memcpy(fw->map + 0x1f400, addr, statbuf.st_size);
 
   munmap(addr, statbuf.st_size);
   close(fd);
@@ -175,14 +173,14 @@ load_bitstream(struct nouveau_bo *data) {
 
   arr2[1] = statbuf.st_size + 3 + 16;
 
-  uint32_t end[2] = {0, 0x0b010000};
+  uint32_t end[2] = {0x0b010000, 0};
 
   memcpy(data->map, arr, sizeof(arr));
   memcpy(data->map + 0x600, arr2, sizeof(arr2));
   uint8_t *map = data->map;
-  map[0] = 0;
-  map[1] = 0;
-  map[2] = 1;
+  map[0x700] = 0;
+  map[0x701] = 0;
+  map[0x702] = 1;
   memcpy(data->map + 0x703, addr, statbuf.st_size);
   memcpy(data->map + 0x703 + statbuf.st_size, end, sizeof(end));
   memcpy(data->map + 0x703 + statbuf.st_size + sizeof(end), end, sizeof(end));
@@ -259,6 +257,10 @@ int main() {
   assert(!nouveau_object_new(channel, 0xbeef8297, 0x8297, NULL, 0, &threed));
   assert(!nouveau_object_new(channel, 0xbeef5039, 0x5039, NULL, 0, &m2mf));
 
+  assert(!nouveau_bufctx_new(client, 1, &bufctx));
+  nouveau_pushbuf_bufctx(push, bufctx);
+
+
   bsp_sem = new_bo_and_map(dev, client, 0x1000);
   bsp_fw = new_bo_and_map(dev, client, 0xd9d0);
   bsp_scratch = new_bo_and_map(dev, client, 0x40000);
@@ -320,8 +322,10 @@ int main() {
   BEGIN_NV04(push, 1, 0x628, 2);
   PUSH_DATA (push, bsp_scratch->offset >> 8);
   PUSH_DATA (push, bsp_scratch->size);
+  PUSH_KICK (push);
 
   /* Load VP firmware/scratch buf */
+
   load_vp_fw(vp_fw);
   BEGIN_NV04(push, 2, 0x600, 3);
   PUSH_DATAh(push, vp_fw->offset);
@@ -331,6 +335,7 @@ int main() {
   BEGIN_NV04(push, 2, 0x628, 2);
   PUSH_DATA (push, vp_scratch->offset >> 8);
   PUSH_DATA (push, vp_scratch->size);
+  PUSH_KICK (push);
 
   load_bitstream(bitstream);
   init_vp_params(vp_params, frames);
@@ -344,7 +349,7 @@ int main() {
   PUSH_DATA (push, 1);
   PUSH_DATA (push, mbring->offset >> 8);
   PUSH_DATA (push, 0xaa000); /* width * height? */
-  PUSH_DATA (push, (mbring->offset >> 8) + 0x2720);
+  PUSH_DATA (push, (mbring->offset >> 8) + 0xaa0);
   PUSH_DATA (push, vpring->offset >> 8);
   PUSH_DATA (push, 0x4f7100); /* half the vpring size? */
   PUSH_DATA (push, 0x3fe000);
@@ -373,7 +378,7 @@ int main() {
 
   /* Write 1 to the semaphore location */
   BEGIN_NV04(push, 1, 0x304, 1);
-  PUSH_DATA (push, 0x1);
+  PUSH_DATA (push, 1);
   PUSH_KICK (push);
 
   /* Wait for the semaphore to get written */
@@ -382,6 +387,7 @@ int main() {
   PUSH_DATA (push, bsp_sem->offset);
   PUSH_DATA (push, 1);
   PUSH_DATA (push, 1); /* wait for sem == 1 */
+  PUSH_KICK (push);
 
   /* VP step 1 */
   BEGIN_NV04(push, 2, 0x400, 14);
@@ -408,6 +414,12 @@ int main() {
   PUSH_DATA (push, 0);
   PUSH_KICK (push);
 
+  sleep(1);
+  printf("%x\n", *(uint32_t *)bsp_sem->map);
+
+  return 0;
+
+
   /* VP step 2 */
   BEGIN_NV04(push, 2, 0x400, 5);
   PUSH_DATA (push, 0x54530201);
@@ -428,6 +440,7 @@ int main() {
 
   sleep(1);
 
+  printf("%x\n", *(uint32_t *)bsp_sem->map);
   //write(1, frames[0]->map, frames[0]->size);
 
   return 0;
