@@ -36,28 +36,28 @@ user = mmap.mmap(user_f.fileno(), 0, access=mmap.ACCESS_READ)
 user_prefix = "\xce\xab\x55\xee\x20\x00\x00\xd0\x00\x00\x00\xd0"
 
 BLOBS = {
-    "bsp": {
+    "nv84_bsp": {
         "data": kernel,
         "start": "\xcd\xab\x55\xee\x44\x46",
         "length": 0x16f3c,
     },
-    "vp": {
+    "nv84_vp": {
         "data": kernel,
         "start": "\xcd\xab\x55\xee\x44\x7c",
         "length": 0x1ae6c,
     },
 
-    "bsp-h264": {
+    "nv84_bsp-h264": {
         "data": user,
         "start": user_prefix + "\x88",
         "length": 0xd9d0,
     },
-    "vp-h264-1": {
+    "nv84_vp-h264-1": {
         "data": user,
         "start": user_prefix + "\x3c",
         "length": 0x1f334,
     },
-    "vp-h264-2": {
+    "nv84_vp-h264-2": {
         "data": user,
         "start": user_prefix + "\x04",
         "length": 0x1bffc,
@@ -70,7 +70,7 @@ for name, v in BLOBS.iteritems():
     length = v["length"]
     for i in xrange(data.size()):
         if data[i:i+len(start)] == start:
-            with open(os.path.join(cwd, "nv84_" + name), "w") as f:
+            with open(os.path.join(cwd, name), "w") as f:
                 f.write(data[i:i+length])
             break
     else:
