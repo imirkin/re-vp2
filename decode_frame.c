@@ -102,6 +102,18 @@ new_bo_and_map(struct nouveau_device *dev,
   return ret;
 }
 
+static struct nouveau_bo *
+new_bo_and_map_gart(struct nouveau_device *dev,
+                    struct nouveau_client *client, long size) {
+  struct nouveau_bo *ret;
+  assert(!nouveau_bo_new(dev, NOUVEAU_BO_GART, 0x1000, size, NULL, &ret));
+  if (client)
+    assert(!nouveau_bo_map(ret, NOUVEAU_BO_RDWR, client));
+  fprintf(stderr, "returning gart map: %llx\n", ret->offset);
+  nouveau_bufctx_refn(bufctx, 0, ret, NOUVEAU_BO_GART | NOUVEAU_BO_RDWR);
+  return ret;
+}
+
 static void
 load_bsp_fw(struct nouveau_bo *fw) {
   int fd = open("/lib/firmware/nouveau/nv84_bsp-h264", O_RDONLY);
@@ -117,6 +129,59 @@ load_bsp_fw(struct nouveau_bo *fw) {
 
   munmap(addr, statbuf.st_size);
   close(fd);
+}
+
+static void
+clear_3d(struct nouveau_pushbuf *push, uint64_t offset,
+         uint16_t w, uint16_t h, int scale, int tile_mode, uint32_t color) {
+  int i;
+
+  BEGIN_NV04(push, 3, 0x200, 4);
+  PUSH_DATAh(push, offset);
+  PUSH_DATA (push, offset);
+  PUSH_DATA (push, 0xd5); /* RGBA8_UNORM - some of the 0's use BGRA8, but whatever, it's all 0's... */
+  PUSH_DATA (push, tile_mode); /* tile mode */
+  BEGIN_NV04(push, 3, 0xff4, 2);
+  PUSH_DATA (push, (uint32_t)h << 16);
+  PUSH_DATA (push, (uint32_t)w << 16);
+  BEGIN_NV04(push, 3, 0xff4, 2);
+  PUSH_DATA (push, (scale == 1 ? 0 : 0x80000000) | scale * w);
+  PUSH_DATA (push, h);
+  BEGIN_NV04(push, 3, 0x143c, 1);
+  PUSH_DATA (push, 0);
+  BEGIN_NV04(push, 3, 0xd80, 4);
+  for (i = 0; i < 4; i++)
+    PUSH_DATA(push, color);
+  BEGIN_NV04(push, 3, 0x19d0, 1);
+  PUSH_DATA (push, 0x3c);
+}
+
+static void
+copy_to_linear(struct nouveau_pushbuf *push, uint64_t from, uint64_t to,
+               int width, int height, int lines, int y) {
+  BEGIN_NV04(push, 4, 0x200, 4);
+  PUSH_DATA (push, 0);
+  PUSH_DATA (push, 0x20 /* tiling mode */);
+  PUSH_DATA (push, width);
+  PUSH_DATA (push, height);
+
+  BEGIN_NV04(push, 4, 0x218, 2);
+  PUSH_DATA (push, y << 16);
+  PUSH_DATA (push, 1);
+
+  BEGIN_NV04(push, 4, 0x238, 2);
+  PUSH_DATAh(push, from);
+  PUSH_DATAh(push, to);
+
+  BEGIN_NV04(push, 4, 0x30c, 8);
+  PUSH_DATA (push, from);
+  PUSH_DATA (push, to);
+  PUSH_DATA (push, 0);
+  PUSH_DATA (push, width);
+  PUSH_DATA (push, width);
+  PUSH_DATA (push, lines);
+  PUSH_DATA (push, 0x101);
+  PUSH_DATA (push, 0);
 }
 
 static void
@@ -236,7 +301,9 @@ int main() {
   struct nouveau_object *bsp, *vp, *threed, *m2mf;
   struct nouveau_pushbuf *push;
   struct nouveau_bo *bsp_sem, *bsp_fw, *bsp_scratch, *bitstream, *mbring, *vpring;
-  struct nouveau_bo /* *vp_sem,*/ *vp_fw, *vp_scratch, *vp_params, *frames[2];
+  struct nouveau_bo *vp_sem, *vp_fw, *vp_scratch, *vp_params, *frames[2];
+  struct nouveau_bo *d3_fpvp, *d3_cb_def, *d3_tsc_tic;
+  struct nouveau_bo *output;
 
   struct nv04_fifo nv04_data = { .vram = 0xbeef0201, .gart = 0xbeef0202 };
 
@@ -268,14 +335,20 @@ int main() {
   mbring = new_bo_and_map(dev, NULL, 0x1d5800);
   vpring = new_bo_and_map(dev, NULL, 0x9ee200);
 
-  //vp_sem = new_bo_and_map(dev, client, 0x1000);
+  vp_sem = new_bo_and_map(dev, client, 0x1000);
   vp_fw = new_bo_and_map(dev, client, 0x3b3fc);
   vp_scratch = new_bo_and_map(dev, client, 0x40000);
   vp_params = new_bo_and_map(dev, client, 0x2000);
 
+  d3_fpvp = new_bo_and_map(dev, NULL, 0x8f00);
+  d3_cb_def = new_bo_and_map(dev, NULL, 0x1000);
+  d3_tsc_tic = new_bo_and_map(dev, NULL, 0x2000);
+
   for (i = 0; i < 2; i++) {
-    frames[i] = new_bo_and_map(dev, client, 0x104000);
+    frames[i] = new_bo_and_map(dev, NULL, 0x104000);
   }
+
+  output = new_bo_and_map_gart(dev, client, 0x104000);
 
   /* Setup DMA for the SEMAPHORE logic */
   BEGIN_NV04(push, 0, 0x60, 1);
@@ -312,6 +385,140 @@ int main() {
   BEGIN_NV04(push, 2, 0x1b8, 1);
   PUSH_DATA (push, nv04_data.vram);
 
+  BEGIN_NV04(push, 3, 0x180, 12);
+  for (i = 0; i < 12; i++)
+    PUSH_DATA (push, nv04_data.vram);
+
+  BEGIN_NV04(push, 3, 0x1c0, 8);
+  for (i = 0; i < 8; i++)
+    PUSH_DATA (push, nv04_data.vram);
+
+  BEGIN_NV04(push, 4, 0x180, 3);
+  for (i = 0; i < 3; i++)
+    PUSH_DATA (push, nv04_data.gart);
+
+  /* Initialize 3D FP/VP/whatever */
+  BEGIN_NV04(push, 3, 0xfa4, 2);
+  PUSH_DATAh(push, d3_fpvp->offset);
+  PUSH_DATA (push, d3_fpvp->offset);
+
+  BEGIN_NV04(push, 3, 0xf7c, 2);
+  PUSH_DATAh(push, d3_fpvp->offset);
+  PUSH_DATA (push, d3_fpvp->offset);
+
+  BEGIN_NV04(push, 3, 0x1290, 1);
+  PUSH_DATA (push, 0xfff);
+  BEGIN_NV04(push, 3, 0x1988, 1);
+  PUSH_DATA (push, 0x240424);
+  BEGIN_NV04(push, 3, 0x1298, 1);
+  PUSH_DATA (push, 0x4);
+  BEGIN_NV04(push, 3, 0x140c, 1);
+  PUSH_DATA (push, 0x0);
+  BEGIN_NV04(push, 3, 0x16ac, 2);
+  PUSH_DATA (push, 0x24);
+  PUSH_DATA (push, 0x0);
+  BEGIN_NV04(push, 3, 0x129c, 1);
+  PUSH_DATA (push, 0x20);
+  BEGIN_NV04(push, 3, 0x1650, 2);
+  PUSH_DATA (push, ~0);
+  PUSH_DATA (push, ~0);
+  BEGIN_NV04(push, 3, 0x16b0, 1);
+  PUSH_DATA (push, 0x24);
+  BEGIN_NV04(push, 3, 0x16bc, 1);
+  PUSH_DATA (push, 0x03020100);
+  BEGIN_NV04(push, 3, 0x1540, 2);
+  PUSH_DATA (push, ~0);
+  PUSH_DATA (push, ~0);
+  BEGIN_NV04(push, 3, 0x1280, 3);
+  PUSH_DATAh(push, d3_cb_def->offset);
+  PUSH_DATA (push, d3_cb_def->offset);
+  PUSH_DATA (push, 0x100);
+  BEGIN_NV04(push, 3, 0x1694, 1);
+  PUSH_DATA (push, 0x131);
+  BEGIN_NV04(push, 3, 0x1280, 3);
+  PUSH_DATAh(push, d3_cb_def->offset + 0x400);
+  PUSH_DATA (push, d3_cb_def->offset + 0x400);
+  PUSH_DATA (push, 0x100);
+  BEGIN_NV04(push, 3, 0x1694, 1);
+  PUSH_DATA (push, 0x1031);
+  BEGIN_NV04(push, 3, 0xa00, 6);
+  for (i = 0; i < 3; i++)
+    PUSH_DATA(push, 0x3f800000);
+  for (i = 0; i < 3; i++)
+    PUSH_DATA(push, 0);
+  BEGIN_NV04(push, 3, 0xc00, 4);
+  PUSH_DATA (push, 0x20000000);
+  PUSH_DATA (push, 0x20000000);
+  PUSH_DATA (push, 0);
+  PUSH_DATA (push, 0x3f800000);
+  BEGIN_NV04(push, 3, 0xdac, 3);
+  PUSH_DATA(push, 0x1b02);
+  PUSH_DATA(push, 0x1b02);
+  PUSH_DATA(push, 0);
+  BEGIN_NV04(push, 3, 0xdc0, 3);
+  PUSH_DATA(push, 0);
+  PUSH_DATA(push, 0);
+  PUSH_DATA(push, 0);
+  BEGIN_NV04(push, 3, 0xdf8, 2);
+  PUSH_DATA(push, 0);
+  PUSH_DATA(push, 0);
+  BEGIN_NV04(push, 3, 0xe00, 1);
+  PUSH_DATA(push, 0);
+  BEGIN_NV04(push, 3, 0x1234, 1);
+  PUSH_DATA(push, 1);
+  BEGIN_NV04(push, 3, 0x12cc, 3);
+  PUSH_DATA(push, 0);
+  PUSH_DATA(push, 3);
+  PUSH_DATA(push, 2);
+  BEGIN_NV04(push, 3, 0x12e8, 2);
+  PUSH_DATA(push, 0);
+  PUSH_DATA(push, 0);
+  BEGIN_NV04(push, 3, 0x1308, 1);
+  PUSH_DATA(push, 1);
+  BEGIN_NV04(push, 3, 0x133c, 1);
+  PUSH_DATA(push, 1);
+  BEGIN_NV04(push, 3, 0x13bc, 1);
+  PUSH_DATA(push, 0x44);
+  /*
+  BEGIN_NV04(push, 3, 0x1528, 1);
+  PUSH_DATA(push, 0);
+  */
+  BEGIN_NV04(push, 3, 0x1534, 1);
+  PUSH_DATA(push, 0);
+  BEGIN_NV04(push, 3, 0x155c, 3);
+  PUSH_DATAh(push, d3_tsc_tic->offset + 0x1000);
+  PUSH_DATAh(push, d3_tsc_tic->offset + 0x1000);
+  PUSH_DATA (push, 0x80);
+  BEGIN_NV04(push, 3, 0x1574, 3);
+  PUSH_DATAh(push, d3_tsc_tic->offset);
+  PUSH_DATAh(push, d3_tsc_tic->offset);
+  PUSH_DATA (push, 0x80);
+  BEGIN_NV04(push, 3, 0x15b4, 2);
+  PUSH_DATA(push, 0);
+  PUSH_DATA(push, 0);
+  BEGIN_NV04(push, 3, 0x168c, 1);
+  PUSH_DATA(push, 0);
+  BEGIN_NV04(push, 3, 0x1924, 1);
+  PUSH_DATA(push, 0);
+  BEGIN_NV04(push, 3, 0x192c, 1);
+  PUSH_DATA(push, 0);
+  BEGIN_NV04(push, 3, 0x194c, 1);
+  PUSH_DATA(push, 0);
+  BEGIN_NV04(push, 3, 0x1a00, 1);
+  PUSH_DATA(push, 0x1111);
+  BEGIN_NV04(push, 3, 0x121c, 1);
+  PUSH_DATA(push, 1);
+  BEGIN_NV04(push, 3, 0x1538, 1);
+  PUSH_DATA(push, 0);
+
+  /* Clear stuff on mbring/vpring */
+  clear_3d(push, mbring->offset + 0xaa000,
+           64, 4760, 4, 0, 0);
+  clear_3d(push, vpring->offset + 0x4f6100,
+           1024, 1, 4, 0, 0);
+  clear_3d(push, vpring->offset + 0x9ed200,
+           1024, 1, 4, 0, 0);
+
   /* Load BSP firmware/scratch buf */
   load_bsp_fw(bsp_fw);
   BEGIN_NV04(push, 1, 0x600, 3);
@@ -339,6 +546,20 @@ int main() {
 
   load_bitstream(bitstream);
   init_vp_params(vp_params, frames);
+
+  /* Clear frames */
+  clear_3d(push, frames[1]->offset,
+           320, 544, 1, 0x20, 0);
+  clear_3d(push, frames[1]->offset + 0xaa000,
+           320, 272, 1, 0x20, 0x3f000000);
+  clear_3d(push, frames[0]->offset,
+           320, 272, 1, 0x20, 0);
+  clear_3d(push, frames[0]->offset + 0x55000,
+           320, 272, 1, 0x20, 0);
+  clear_3d(push, frames[0]->offset + 0xaa000,
+           320, 136, 1, 0x20, 0x3f000000);
+  clear_3d(push, frames[0]->offset + 0xaa000 + 0x2d000,
+           320, 136, 1, 0x20, 0x3f000000);
 
   /* Kick off the BSP */
   BEGIN_NV04(push, 1, 0x400, 20);
@@ -415,11 +636,84 @@ int main() {
   PUSH_DATA (push, 0);
   PUSH_KICK (push);
 
-  sleep(1);
-  fprintf(stderr, "%x\n", *(uint32_t *)bsp_sem->map);
-  write(1, frames[0]->map, frames[0]->size);
-  return 0;
+  /* Set the semaphore */
+  BEGIN_NV04(push, 2, 0x610, 3);
+  PUSH_DATAh(push, vp_sem->offset);
+  PUSH_DATA (push, vp_sem->offset);
+  PUSH_DATA (push, 2);
 
+  /* Write to the semaphore location */
+  BEGIN_NV04(push, 2, 0x304, 1);
+  PUSH_DATA (push, 1);
+  PUSH_KICK (push);
+
+  /* Wait for the semaphore to get written */
+  BEGIN_NV04(push, 4, 0x10, 4);
+  PUSH_DATAh(push, vp_sem->offset);
+  PUSH_DATA (push, vp_sem->offset);
+  PUSH_DATA (push, 2);
+  PUSH_DATA (push, 1); /* wait for sem == 1 */
+  PUSH_KICK (push);
+
+  /* copy the frame before deblocking */
+  copy_to_linear(push, frames[0]->offset, output->offset + 0 * 0x7d00, 1280, 272, 25, 0);
+  PUSH_KICK (push);
+  sleep(1);
+  return 0;
+  copy_to_linear(push, frames[0]->offset, output->offset + 1 * 0x7d00, 1280, 272, 25, 25);
+  copy_to_linear(push, frames[0]->offset, output->offset + 2 * 0x7d00, 1280, 272, 25, 50);
+  copy_to_linear(push, frames[0]->offset, output->offset + 3 * 0x7d00, 1280, 272, 25, 75);
+  copy_to_linear(push, frames[0]->offset, output->offset + 4 * 0x7d00, 1280, 272, 25, 100);
+  copy_to_linear(push, frames[0]->offset, output->offset + 5 * 0x7d00, 1280, 272, 25, 125);
+  copy_to_linear(push, frames[0]->offset, output->offset + 6 * 0x7d00, 1280, 272, 25, 150);
+  copy_to_linear(push, frames[0]->offset, output->offset + 7 * 0x7d00, 1280, 272, 25, 175);
+  copy_to_linear(push, frames[0]->offset, output->offset + 8 * 0x7d00, 1280, 272, 25, 200);
+  copy_to_linear(push, frames[0]->offset, output->offset + 9 * 0x7d00, 1280, 272, 25, 225);
+  copy_to_linear(push, frames[0]->offset, output->offset + 10 * 0x7d00, 1280, 272, 22, 250);
+
+  copy_to_linear(push, frames[0]->offset + 0x55000, output->offset + 0x55000 + 0 * 0x7d00, 1280, 272, 25, 0);
+  copy_to_linear(push, frames[0]->offset + 0x55000, output->offset + 0x55000 + 1 * 0x7d00, 1280, 272, 25, 25);
+  copy_to_linear(push, frames[0]->offset + 0x55000, output->offset + 0x55000 + 2 * 0x7d00, 1280, 272, 25, 50);
+  copy_to_linear(push, frames[0]->offset + 0x55000, output->offset + 0x55000 + 3 * 0x7d00, 1280, 272, 25, 75);
+  copy_to_linear(push, frames[0]->offset + 0x55000, output->offset + 0x55000 + 4 * 0x7d00, 1280, 272, 25, 100);
+  copy_to_linear(push, frames[0]->offset + 0x55000, output->offset + 0x55000 + 5 * 0x7d00, 1280, 272, 25, 125);
+  copy_to_linear(push, frames[0]->offset + 0x55000, output->offset + 0x55000 + 6 * 0x7d00, 1280, 272, 25, 150);
+  copy_to_linear(push, frames[0]->offset + 0x55000, output->offset + 0x55000 + 7 * 0x7d00, 1280, 272, 25, 175);
+  copy_to_linear(push, frames[0]->offset + 0x55000, output->offset + 0x55000 + 8 * 0x7d00, 1280, 272, 25, 200);
+  copy_to_linear(push, frames[0]->offset + 0x55000, output->offset + 0x55000 + 9 * 0x7d00, 1280, 272, 25, 225);
+  copy_to_linear(push, frames[0]->offset + 0x55000, output->offset + 0x55000 + 10 * 0x7d00, 1280, 272, 22, 250);
+
+  copy_to_linear(push, frames[0]->offset + 0xaa000, output->offset + 0xaa000 + 0 * 0x7d00,
+                 1280, 136, 25, 0);
+  copy_to_linear(push, frames[0]->offset + 0xaa000, output->offset + 0xaa000 + 1 * 0x7d00,
+                 1280, 136, 25, 25);
+  copy_to_linear(push, frames[0]->offset + 0xaa000, output->offset + 0xaa000 + 2 * 0x7d00,
+                 1280, 136, 25, 50);
+  copy_to_linear(push, frames[0]->offset + 0xaa000, output->offset + 0xaa000 + 3 * 0x7d00,
+                 1280, 136, 25, 75);
+  copy_to_linear(push, frames[0]->offset + 0xaa000, output->offset + 0xaa000 + 4 * 0x7d00,
+                 1280, 136, 25, 100);
+  copy_to_linear(push, frames[0]->offset + 0xaa000, output->offset + 0xaa000 + 5 * 0x7d00,
+                 1280, 136, 11, 125);
+
+  /* Round up number of lines to 16, so 2d000 offset on source. */
+  copy_to_linear(push, frames[0]->offset + 0xaa000 + 0x2d000, output->offset + 0xaa000 + 0x2a800 + 0 * 0x7d00,
+                 1280, 136, 25, 0);
+  copy_to_linear(push, frames[0]->offset + 0xaa000 + 0x2d000, output->offset + 0xaa000 + 0x2a800 + 1 * 0x7d00,
+                 1280, 136, 25, 25);
+  copy_to_linear(push, frames[0]->offset + 0xaa000 + 0x2d000, output->offset + 0xaa000 + 0x2a800 + 2 * 0x7d00,
+                 1280, 136, 25, 50);
+  copy_to_linear(push, frames[0]->offset + 0xaa000 + 0x2d000, output->offset + 0xaa000 + 0x2a800 + 3 * 0x7d00,
+                 1280, 136, 25, 75);
+  copy_to_linear(push, frames[0]->offset + 0xaa000 + 0x2d000, output->offset + 0xaa000 + 0x2a800 + 4 * 0x7d00,
+                 1280, 136, 25, 100);
+  copy_to_linear(push, frames[0]->offset + 0xaa000 + 0x2d000, output->offset + 0xaa000 + 0x2a800 + 5 * 0x7d00,
+                 1280, 136, 11, 125);
+
+
+  sleep(1);
+  write(1, output->map, 0xaa000 + 0x55000);
+  return 0;
 
   /* VP step 2 */
   BEGIN_NV04(push, 2, 0x400, 5);
@@ -439,9 +733,26 @@ int main() {
   PUSH_DATA (push, 0);
   PUSH_KICK (push);
 
+  /* Set the semaphore */
+  BEGIN_NV04(push, 2, 0x610, 3);
+  PUSH_DATAh(push, vp_sem->offset);
+  PUSH_DATA (push, vp_sem->offset);
+  PUSH_DATA (push, 3);
+
+  /* Write to the semaphore location, intr */
+  BEGIN_NV04(push, 2, 0x304, 1);
+  PUSH_DATA (push, 0x101);
+  PUSH_KICK (push);
+
+  fprintf(stderr, "%x\n", *(uint32_t *)vp_sem->map);
+
   sleep(1);
 
-  fprintf(stderr, "%x\n", *(uint32_t *)bsp_sem->map);
+  fprintf(stderr, "%x\n", *(uint32_t *)vp_sem->map);
+
+  sleep(1);
+
+  fprintf(stderr, "%x\n", *(uint32_t *)vp_sem->map);
   //write(1, frames[0]->map, frames[0]->size);
 
   return 0;
