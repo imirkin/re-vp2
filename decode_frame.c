@@ -185,6 +185,61 @@ copy_to_linear(struct nouveau_pushbuf *push, uint64_t from, uint64_t to,
 }
 
 static void
+copy_buffer(struct nouveau_pushbuf *push, struct nouveau_bo *from, struct nouveau_bo *to) {
+  copy_to_linear(push, from->offset, to->offset + 0 * 0x7d00, 1280, 272, 25, 0);
+  copy_to_linear(push, from->offset, to->offset + 1 * 0x7d00, 1280, 272, 25, 25);
+  copy_to_linear(push, from->offset, to->offset + 2 * 0x7d00, 1280, 272, 25, 50);
+  copy_to_linear(push, from->offset, to->offset + 3 * 0x7d00, 1280, 272, 25, 75);
+  copy_to_linear(push, from->offset, to->offset + 4 * 0x7d00, 1280, 272, 25, 100);
+  copy_to_linear(push, from->offset, to->offset + 5 * 0x7d00, 1280, 272, 25, 125);
+  copy_to_linear(push, from->offset, to->offset + 6 * 0x7d00, 1280, 272, 25, 150);
+  copy_to_linear(push, from->offset, to->offset + 7 * 0x7d00, 1280, 272, 25, 175);
+  copy_to_linear(push, from->offset, to->offset + 8 * 0x7d00, 1280, 272, 25, 200);
+  copy_to_linear(push, from->offset, to->offset + 9 * 0x7d00, 1280, 272, 25, 225);
+  copy_to_linear(push, from->offset, to->offset + 10 * 0x7d00, 1280, 272, 22, 250);
+
+  copy_to_linear(push, from->offset + 0x55000, to->offset + 0x55000 + 0 * 0x7d00, 1280, 272, 25, 0);
+  copy_to_linear(push, from->offset + 0x55000, to->offset + 0x55000 + 1 * 0x7d00, 1280, 272, 25, 25);
+  copy_to_linear(push, from->offset + 0x55000, to->offset + 0x55000 + 2 * 0x7d00, 1280, 272, 25, 50);
+  copy_to_linear(push, from->offset + 0x55000, to->offset + 0x55000 + 3 * 0x7d00, 1280, 272, 25, 75);
+  copy_to_linear(push, from->offset + 0x55000, to->offset + 0x55000 + 4 * 0x7d00, 1280, 272, 25, 100);
+  copy_to_linear(push, from->offset + 0x55000, to->offset + 0x55000 + 5 * 0x7d00, 1280, 272, 25, 125);
+  copy_to_linear(push, from->offset + 0x55000, to->offset + 0x55000 + 6 * 0x7d00, 1280, 272, 25, 150);
+  copy_to_linear(push, from->offset + 0x55000, to->offset + 0x55000 + 7 * 0x7d00, 1280, 272, 25, 175);
+  copy_to_linear(push, from->offset + 0x55000, to->offset + 0x55000 + 8 * 0x7d00, 1280, 272, 25, 200);
+  copy_to_linear(push, from->offset + 0x55000, to->offset + 0x55000 + 9 * 0x7d00, 1280, 272, 25, 225);
+  copy_to_linear(push, from->offset + 0x55000, to->offset + 0x55000 + 10 * 0x7d00, 1280, 272, 22, 250);
+
+  copy_to_linear(push, from->offset + 0xaa000, to->offset + 0xaa000 + 0 * 0x7d00,
+                 1280, 136, 25, 0);
+  copy_to_linear(push, from->offset + 0xaa000, to->offset + 0xaa000 + 1 * 0x7d00,
+                 1280, 136, 25, 25);
+  copy_to_linear(push, from->offset + 0xaa000, to->offset + 0xaa000 + 2 * 0x7d00,
+                 1280, 136, 25, 50);
+  copy_to_linear(push, from->offset + 0xaa000, to->offset + 0xaa000 + 3 * 0x7d00,
+                 1280, 136, 25, 75);
+  copy_to_linear(push, from->offset + 0xaa000, to->offset + 0xaa000 + 4 * 0x7d00,
+                 1280, 136, 25, 100);
+  copy_to_linear(push, from->offset + 0xaa000, to->offset + 0xaa000 + 5 * 0x7d00,
+                 1280, 136, 11, 125);
+
+  /* Round up number of lines to 16, so 2d000 offset on source. */
+  copy_to_linear(push, from->offset + 0xaa000 + 0x2d000, to->offset + 0xaa000 + 0x2a800 + 0 * 0x7d00,
+                 1280, 136, 25, 0);
+  copy_to_linear(push, from->offset + 0xaa000 + 0x2d000, to->offset + 0xaa000 + 0x2a800 + 1 * 0x7d00,
+                 1280, 136, 25, 25);
+  copy_to_linear(push, from->offset + 0xaa000 + 0x2d000, to->offset + 0xaa000 + 0x2a800 + 2 * 0x7d00,
+                 1280, 136, 25, 50);
+  copy_to_linear(push, from->offset + 0xaa000 + 0x2d000, to->offset + 0xaa000 + 0x2a800 + 3 * 0x7d00,
+                 1280, 136, 25, 75);
+  copy_to_linear(push, from->offset + 0xaa000 + 0x2d000, to->offset + 0xaa000 + 0x2a800 + 4 * 0x7d00,
+                 1280, 136, 25, 100);
+  copy_to_linear(push, from->offset + 0xaa000 + 0x2d000, to->offset + 0xaa000 + 0x2a800 + 5 * 0x7d00,
+                 1280, 136, 11, 125);
+  PUSH_KICK(push);
+}
+
+static void
 load_vp_fw(struct nouveau_bo *fw) {
   int fd;
   struct stat statbuf;
@@ -662,59 +717,8 @@ int main() {
   PUSH_KICK (push);
 
   /* copy the frame before deblocking */
-  copy_to_linear(push, frames[0]->offset, output->offset + 0 * 0x7d00, 1280, 272, 25, 0);
-  copy_to_linear(push, frames[0]->offset, output->offset + 1 * 0x7d00, 1280, 272, 25, 25);
-  copy_to_linear(push, frames[0]->offset, output->offset + 2 * 0x7d00, 1280, 272, 25, 50);
-  copy_to_linear(push, frames[0]->offset, output->offset + 3 * 0x7d00, 1280, 272, 25, 75);
-  copy_to_linear(push, frames[0]->offset, output->offset + 4 * 0x7d00, 1280, 272, 25, 100);
-  copy_to_linear(push, frames[0]->offset, output->offset + 5 * 0x7d00, 1280, 272, 25, 125);
-  copy_to_linear(push, frames[0]->offset, output->offset + 6 * 0x7d00, 1280, 272, 25, 150);
-  copy_to_linear(push, frames[0]->offset, output->offset + 7 * 0x7d00, 1280, 272, 25, 175);
-  copy_to_linear(push, frames[0]->offset, output->offset + 8 * 0x7d00, 1280, 272, 25, 200);
-  copy_to_linear(push, frames[0]->offset, output->offset + 9 * 0x7d00, 1280, 272, 25, 225);
-  copy_to_linear(push, frames[0]->offset, output->offset + 10 * 0x7d00, 1280, 272, 22, 250);
-
-  copy_to_linear(push, frames[0]->offset + 0x55000, output->offset + 0x55000 + 0 * 0x7d00, 1280, 272, 25, 0);
-  copy_to_linear(push, frames[0]->offset + 0x55000, output->offset + 0x55000 + 1 * 0x7d00, 1280, 272, 25, 25);
-  copy_to_linear(push, frames[0]->offset + 0x55000, output->offset + 0x55000 + 2 * 0x7d00, 1280, 272, 25, 50);
-  copy_to_linear(push, frames[0]->offset + 0x55000, output->offset + 0x55000 + 3 * 0x7d00, 1280, 272, 25, 75);
-  copy_to_linear(push, frames[0]->offset + 0x55000, output->offset + 0x55000 + 4 * 0x7d00, 1280, 272, 25, 100);
-  copy_to_linear(push, frames[0]->offset + 0x55000, output->offset + 0x55000 + 5 * 0x7d00, 1280, 272, 25, 125);
-  copy_to_linear(push, frames[0]->offset + 0x55000, output->offset + 0x55000 + 6 * 0x7d00, 1280, 272, 25, 150);
-  copy_to_linear(push, frames[0]->offset + 0x55000, output->offset + 0x55000 + 7 * 0x7d00, 1280, 272, 25, 175);
-  copy_to_linear(push, frames[0]->offset + 0x55000, output->offset + 0x55000 + 8 * 0x7d00, 1280, 272, 25, 200);
-  copy_to_linear(push, frames[0]->offset + 0x55000, output->offset + 0x55000 + 9 * 0x7d00, 1280, 272, 25, 225);
-  copy_to_linear(push, frames[0]->offset + 0x55000, output->offset + 0x55000 + 10 * 0x7d00, 1280, 272, 22, 250);
-
-  copy_to_linear(push, frames[0]->offset + 0xaa000, output->offset + 0xaa000 + 0 * 0x7d00,
-                 1280, 136, 25, 0);
-  copy_to_linear(push, frames[0]->offset + 0xaa000, output->offset + 0xaa000 + 1 * 0x7d00,
-                 1280, 136, 25, 25);
-  copy_to_linear(push, frames[0]->offset + 0xaa000, output->offset + 0xaa000 + 2 * 0x7d00,
-                 1280, 136, 25, 50);
-  copy_to_linear(push, frames[0]->offset + 0xaa000, output->offset + 0xaa000 + 3 * 0x7d00,
-                 1280, 136, 25, 75);
-  copy_to_linear(push, frames[0]->offset + 0xaa000, output->offset + 0xaa000 + 4 * 0x7d00,
-                 1280, 136, 25, 100);
-  copy_to_linear(push, frames[0]->offset + 0xaa000, output->offset + 0xaa000 + 5 * 0x7d00,
-                 1280, 136, 11, 125);
-
-  /* Round up number of lines to 16, so 2d000 offset on source. */
-  copy_to_linear(push, frames[0]->offset + 0xaa000 + 0x2d000, output->offset + 0xaa000 + 0x2a800 + 0 * 0x7d00,
-                 1280, 136, 25, 0);
-  copy_to_linear(push, frames[0]->offset + 0xaa000 + 0x2d000, output->offset + 0xaa000 + 0x2a800 + 1 * 0x7d00,
-                 1280, 136, 25, 25);
-  copy_to_linear(push, frames[0]->offset + 0xaa000 + 0x2d000, output->offset + 0xaa000 + 0x2a800 + 2 * 0x7d00,
-                 1280, 136, 25, 50);
-  copy_to_linear(push, frames[0]->offset + 0xaa000 + 0x2d000, output->offset + 0xaa000 + 0x2a800 + 3 * 0x7d00,
-                 1280, 136, 25, 75);
-  copy_to_linear(push, frames[0]->offset + 0xaa000 + 0x2d000, output->offset + 0xaa000 + 0x2a800 + 4 * 0x7d00,
-                 1280, 136, 25, 100);
-  copy_to_linear(push, frames[0]->offset + 0xaa000 + 0x2d000, output->offset + 0xaa000 + 0x2a800 + 5 * 0x7d00,
-                 1280, 136, 11, 125);
-  PUSH_KICK(push);
-
-  sleep(1);
+  copy_buffer(push, frames[0], output);
+  sleep(10);
   write(1, output->map, 0xaa000 + 0x55000);
   return 0;
 
