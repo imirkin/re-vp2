@@ -103,6 +103,22 @@ new_bo_and_map(struct nouveau_device *dev,
 }
 
 static struct nouveau_bo *
+new_bo_and_map_tile(struct nouveau_device *dev,
+               struct nouveau_client *client, long size) {
+  struct nouveau_bo *ret;
+  union nouveau_bo_config cfg;
+
+  cfg.nv50.tile_mode = 0x20;
+  cfg.nv50.memtype = 0x70;
+  assert(!nouveau_bo_new(dev, NOUVEAU_BO_VRAM, 0x1000, size, &cfg, &ret));
+  if (client)
+    assert(!nouveau_bo_map(ret, NOUVEAU_BO_RDWR, client));
+  fprintf(stderr, "returning map: %llx\n", ret->offset);
+  nouveau_bufctx_refn(bufctx, 0, ret, NOUVEAU_BO_VRAM | NOUVEAU_BO_RDWR);
+  return ret;
+}
+
+static struct nouveau_bo *
 new_bo_and_map_gart(struct nouveau_device *dev,
                     struct nouveau_client *client, long size) {
   struct nouveau_bo *ret;
@@ -159,7 +175,7 @@ clear_3d(struct nouveau_pushbuf *push, uint64_t offset,
 
 static void
 copy_to_linear(struct nouveau_pushbuf *push, uint64_t from, uint64_t to,
-               int width, int height, int lines, int y) {
+               int width, int height, int lines, int dest_pitch) {
   BEGIN_NV04(push, 4, 0x200, 4);
   PUSH_DATA (push, 0);
   PUSH_DATA (push, 0x20 /* tiling mode */);
@@ -167,7 +183,7 @@ copy_to_linear(struct nouveau_pushbuf *push, uint64_t from, uint64_t to,
   PUSH_DATA (push, height);
 
   BEGIN_NV04(push, 4, 0x218, 2);
-  PUSH_DATA (push, y << 16);
+  PUSH_DATA (push, 0 << 16); /* y offset */
   PUSH_DATA (push, 1);
 
   BEGIN_NV04(push, 4, 0x238, 2);
@@ -178,7 +194,7 @@ copy_to_linear(struct nouveau_pushbuf *push, uint64_t from, uint64_t to,
   PUSH_DATA (push, from);
   PUSH_DATA (push, to);
   PUSH_DATA (push, 0);
-  PUSH_DATA (push, width);
+  PUSH_DATA (push, dest_pitch);
   PUSH_DATA (push, width);
   PUSH_DATA (push, lines);
   PUSH_DATA (push, 0x101);
@@ -200,7 +216,7 @@ copy_buffer(struct nouveau_pushbuf *push, struct nouveau_bo *from, struct nouvea
   copy_to_linear(push, from->offset, to->offset + 9 * 0x7d00, 1280, 272, 25, 225);
   copy_to_linear(push, from->offset, to->offset + 10 * 0x7d00, 1280, 272, 22, 250);
   */
-  copy_to_linear(push, from->offset, to->offset, 1280, 272, 272, 0);
+  copy_to_linear(push, from->offset, to->offset, 1280, 272, 272, 1280 * 2);
 
   /*
   copy_to_linear(push, from->offset + 0x55000, to->offset + 0x55000 + 0 * 0x7d00, 1280, 272, 25, 0);
@@ -215,7 +231,7 @@ copy_buffer(struct nouveau_pushbuf *push, struct nouveau_bo *from, struct nouvea
   copy_to_linear(push, from->offset + 0x55000, to->offset + 0x55000 + 9 * 0x7d00, 1280, 272, 25, 225);
   copy_to_linear(push, from->offset + 0x55000, to->offset + 0x55000 + 10 * 0x7d00, 1280, 272, 22, 250);
   */
-  copy_to_linear(push, from->offset + 0x55000, to->offset + 0x55000, 1280, 272, 272, 0);
+  copy_to_linear(push, from->offset + 0x55000, to->offset + /*0x55000*/ 1280, 1280, 272, 272, 1280 * 2);
 
   /*
   copy_to_linear(push, from->offset + 0xaa000, to->offset + 0xaa000 + 0 * 0x7d00,
@@ -231,7 +247,7 @@ copy_buffer(struct nouveau_pushbuf *push, struct nouveau_bo *from, struct nouvea
   copy_to_linear(push, from->offset + 0xaa000, to->offset + 0xaa000 + 5 * 0x7d00,
                  1280, 136, 11, 125);
   */
-  copy_to_linear(push, from->offset + 0xaa000, to->offset + 0xaa000, 1280, 136, 136, 0);
+  copy_to_linear(push, from->offset + 0xaa000, to->offset + 0xaa000, 1280, 136, 136, 1280 * 2);
 
   /* Round up number of lines to 16, so 2d000 offset on source. */
   /*
@@ -248,7 +264,7 @@ copy_buffer(struct nouveau_pushbuf *push, struct nouveau_bo *from, struct nouvea
   copy_to_linear(push, from->offset + 0xaa000 + 0x2d000, to->offset + 0xaa000 + 0x2a800 + 5 * 0x7d00,
                  1280, 136, 11, 125);
   */
-  copy_to_linear(push, from->offset + 0xaa000 + 0x2d000, to->offset + 0xaa000 + 0x2a800, 1280, 136, 136, 0);
+  copy_to_linear(push, from->offset + 0xaa000 + 0x2d000, to->offset + 0xaa000 + /*0x2a800*/ + 1280, 1280, 136, 136, 1280 * 2);
 
   PUSH_KICK(push);
 }
@@ -418,7 +434,7 @@ int main() {
   d3_tsc_tic = new_bo_and_map(dev, NULL, 0x2000);
 
   for (i = 0; i < 2; i++) {
-    frames[i] = new_bo_and_map(dev, client, 0x104000);
+    frames[i] = new_bo_and_map_tile(dev, client, 0x104000);
   }
 
   output = new_bo_and_map_gart(dev, client, 0x104000);
@@ -794,7 +810,13 @@ int main() {
 
   fprintf(stderr, "%x\n", *(uint32_t *)vp_sem->map);
 
-  write(1, output->map, 0xaa000 + 0x55000);
+  write(1, output->map, 0xaa000);
+  for (i = 0; i < 0x55000; i += 2) {
+    write(1, output->map + 0xaa000 + i, 1);
+  }
+  for (i = 0; i < 0x55000; i += 2) {
+    write(1, output->map + 0xaa000 + i + 1, 1);
+  }
 
   return 0;
 }
