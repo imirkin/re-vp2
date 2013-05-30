@@ -11,3 +11,19 @@ h264_player:
   Note that it does not do any frame reordering, so the output is very
   jittery. Also since it doesn't have access to the picinfo, it's
   hardcoded to the right thing (so other videos are unlikely to play).
+
+  (Current version commented s.t. it outputs just the first frame's
+  YUV data on stdout.)
+
+bsp_test:
+
+  Tries to make sure that the BSP engine is accessible and functioning
+  properly. Invokes the 0x304 "write semaphore" method, and checks
+  whether the value is indeed written.
+
+decode_frame:
+
+  Standalone program that decodes a single NAL (that it loads from a
+  separate file). This has all the bits necessary to do the actual
+  decoding, but uses hardcoded picinfo, as h264_player above. Output
+  is a YUV file on stdout.
