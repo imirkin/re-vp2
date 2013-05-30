@@ -142,9 +142,9 @@ clear_3d(struct nouveau_pushbuf *push, uint64_t offset,
   PUSH_DATA (push, 0xd5); /* RGBA8_UNORM - some of the 0's use BGRA8, but whatever, it's all 0's... */
   PUSH_DATA (push, tile_mode); /* tile mode */
   BEGIN_NV04(push, 3, 0xff4, 2);
-  PUSH_DATA (push, (uint32_t)h << 16);
   PUSH_DATA (push, (uint32_t)w << 16);
-  BEGIN_NV04(push, 3, 0xff4, 2);
+  PUSH_DATA (push, (uint32_t)h << 16);
+  BEGIN_NV04(push, 3, 0x1240, 2);
   PUSH_DATA (push, (scale == 1 ? 0 : 0x80000000) | scale * w);
   PUSH_DATA (push, h);
   BEGIN_NV04(push, 3, 0x143c, 1);
@@ -154,6 +154,7 @@ clear_3d(struct nouveau_pushbuf *push, uint64_t offset,
     PUSH_DATA(push, color);
   BEGIN_NV04(push, 3, 0x19d0, 1);
   PUSH_DATA (push, 0x3c);
+  PUSH_KICK (push);
 }
 
 static void
@@ -372,7 +373,7 @@ int main() {
   assert(!nouveau_client_new(dev, &client));
   assert(!nouveau_object_new(&dev->object, 0, NOUVEAU_FIFO_CHANNEL_CLASS,
                              &nv04_data, sizeof(nv04_data), &channel));
-  assert(!nouveau_pushbuf_new(client, channel, 2, 0x1000, 1, &push));
+  assert(!nouveau_pushbuf_new(client, channel, 2, 0x2000, 1, &push));
 
   assert(!nouveau_object_new(channel, 0xbeef74b0, 0x74b0, NULL, 0, &bsp));
   assert(!nouveau_object_new(channel, 0xbeef7476, 0x7476, NULL, 0, &vp));
@@ -409,6 +410,9 @@ int main() {
 
   output = new_bo_and_map_gart(dev, client, 0x104000);
 
+  *(uint64_t *)bsp_sem->map = ~0;
+  *(uint64_t *)vp_sem->map = ~0;
+
   /* Setup DMA for the SEMAPHORE logic */
   BEGIN_NV04(push, 0, 0x60, 1);
   PUSH_DATA (push, nv04_data.vram);
@@ -444,9 +448,13 @@ int main() {
   BEGIN_NV04(push, 2, 0x1b8, 1);
   PUSH_DATA (push, nv04_data.vram);
 
-  BEGIN_NV04(push, 3, 0x180, 12);
+  BEGIN_NV04(push, 3, 0x180, 1);
   PUSH_DATA (push, sync->handle);
-  for (i = 0; i < 11; i++)
+  BEGIN_NV04(push, 3, 0x188, 2);
+  for (i = 0; i < 2; i++)
+    PUSH_DATA (push, nv04_data.vram);
+  BEGIN_NV04(push, 3, 0x198, 6);
+  for (i = 0; i < 6; i++)
     PUSH_DATA (push, nv04_data.vram);
 
   BEGIN_NV04(push, 3, 0x1c0, 8);
@@ -548,11 +556,11 @@ int main() {
   PUSH_DATA(push, 0);
   BEGIN_NV04(push, 3, 0x155c, 3);
   PUSH_DATAh(push, d3_tsc_tic->offset + 0x1000);
-  PUSH_DATAh(push, d3_tsc_tic->offset + 0x1000);
+  PUSH_DATA (push, d3_tsc_tic->offset + 0x1000);
   PUSH_DATA (push, 0x80);
   BEGIN_NV04(push, 3, 0x1574, 3);
   PUSH_DATAh(push, d3_tsc_tic->offset);
-  PUSH_DATAh(push, d3_tsc_tic->offset);
+  PUSH_DATA (push, d3_tsc_tic->offset);
   PUSH_DATA (push, 0x80);
   BEGIN_NV04(push, 3, 0x15b4, 2);
   PUSH_DATA(push, 0);
@@ -579,6 +587,13 @@ int main() {
            1024, 1, 4, 0, 0);
   clear_3d(push, vpring->offset + 0x9ed200,
            1024, 1, 4, 0, 0);
+
+  /* Write semaphore */
+  BEGIN_NV04(push, 3, 0x1b00, 4);
+  PUSH_DATAh(push, bsp_sem->offset);
+  PUSH_DATA (push, bsp_sem->offset);
+  PUSH_DATA (push, 0);
+  PUSH_DATA (push, 0xf010); /* write + ? */
 
   /* Load BSP firmware/scratch buf */
   load_bsp_fw(bsp_fw);
@@ -611,6 +626,7 @@ int main() {
   /* Clear frames */
   clear_3d(push, frames[1]->offset,
            320, 544, 1, 0x20, 0);
+  return;
   clear_3d(push, frames[1]->offset + 0xaa000,
            320, 272, 1, 0x20, 0x3f000000);
   clear_3d(push, frames[0]->offset,
@@ -619,8 +635,23 @@ int main() {
            320, 272, 1, 0x20, 0);
   clear_3d(push, frames[0]->offset + 0xaa000,
            320, 136, 1, 0x20, 0x3f000000);
-  clear_3d(push, frames[0]->offset + 0xaa000 + 0x2d000,
+  clear_3d(push, frames[0]->offset + 0xaa000 + 0x2d000 /* 1280 * 0xe0 */,
            320, 136, 1, 0x20, 0x3f000000);
+
+  sleep(1); /* cheap semaphore */
+  /* copy the frame before deblocking */
+  copy_buffer(push, frames[0], output);
+  sleep(1);
+  //write(1, output->map, 0xaa000 + 0x55000);
+  return 0;
+
+  /* Wait for the mbring/vpring clearing */
+  BEGIN_NV04(push, 4, 0x10, 4);
+  PUSH_DATAh(push, bsp_sem->offset);
+  PUSH_DATA (push, bsp_sem->offset);
+  PUSH_DATA (push, 0);
+  PUSH_DATA (push, 1); /* wait for sem == 0 */
+  PUSH_KICK (push);
 
   /* Kick off the BSP */
   BEGIN_NV04(push, 1, 0x400, 20);
@@ -696,6 +727,8 @@ int main() {
   BEGIN_NV04(push, 2, 0x300, 1);
   PUSH_DATA (push, 0);
   PUSH_KICK (push);
+
+  *(uint32_t *)vp_sem->map = 0;
 
   /* Set the semaphore */
   BEGIN_NV04(push, 2, 0x610, 3);
