@@ -298,7 +298,7 @@ int main() {
   struct nouveau_device *dev;
   struct nouveau_client *client;
   struct nouveau_object *channel;
-  struct nouveau_object *bsp, *vp, *threed, *m2mf;
+  struct nouveau_object *bsp, *vp, *threed, *m2mf, *sync;
   struct nouveau_pushbuf *push;
   struct nouveau_bo *bsp_sem, *bsp_fw, *bsp_scratch, *bitstream, *mbring, *vpring;
   struct nouveau_bo *vp_sem, *vp_fw, *vp_scratch, *vp_params, *frames[2];
@@ -323,6 +323,10 @@ int main() {
   assert(!nouveau_object_new(channel, 0xbeef7476, 0x7476, NULL, 0, &vp));
   assert(!nouveau_object_new(channel, 0xbeef8297, 0x8297, NULL, 0, &threed));
   assert(!nouveau_object_new(channel, 0xbeef5039, 0x5039, NULL, 0, &m2mf));
+
+  assert(!nouveau_object_new(channel, 0xbeef0301, NOUVEAU_NOTIFIER_CLASS,
+                             &(struct nv04_notify){ .length = 32 },
+                             sizeof(struct nv04_notify), &sync));
 
   assert(!nouveau_bufctx_new(client, 1, &bufctx));
   nouveau_pushbuf_bufctx(push, bufctx);
@@ -386,7 +390,8 @@ int main() {
   PUSH_DATA (push, nv04_data.vram);
 
   BEGIN_NV04(push, 3, 0x180, 12);
-  for (i = 0; i < 12; i++)
+  PUSH_DATA (push, sync->handle);
+  for (i = 0; i < 11; i++)
     PUSH_DATA (push, nv04_data.vram);
 
   BEGIN_NV04(push, 3, 0x1c0, 8);
@@ -394,7 +399,8 @@ int main() {
     PUSH_DATA (push, nv04_data.vram);
 
   BEGIN_NV04(push, 4, 0x180, 3);
-  for (i = 0; i < 3; i++)
+  PUSH_DATA (push, sync->handle);
+  for (i = 0; i < 2; i++)
     PUSH_DATA (push, nv04_data.gart);
 
   /* Initialize 3D FP/VP/whatever */
@@ -657,9 +663,6 @@ int main() {
 
   /* copy the frame before deblocking */
   copy_to_linear(push, frames[0]->offset, output->offset + 0 * 0x7d00, 1280, 272, 25, 0);
-  PUSH_KICK (push);
-  sleep(1);
-  return 0;
   copy_to_linear(push, frames[0]->offset, output->offset + 1 * 0x7d00, 1280, 272, 25, 25);
   copy_to_linear(push, frames[0]->offset, output->offset + 2 * 0x7d00, 1280, 272, 25, 50);
   copy_to_linear(push, frames[0]->offset, output->offset + 3 * 0x7d00, 1280, 272, 25, 75);
@@ -709,7 +712,7 @@ int main() {
                  1280, 136, 25, 100);
   copy_to_linear(push, frames[0]->offset + 0xaa000 + 0x2d000, output->offset + 0xaa000 + 0x2a800 + 5 * 0x7d00,
                  1280, 136, 11, 125);
-
+  PUSH_KICK(push);
 
   sleep(1);
   write(1, output->map, 0xaa000 + 0x55000);
