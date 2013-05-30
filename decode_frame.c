@@ -405,7 +405,7 @@ int main() {
   d3_tsc_tic = new_bo_and_map(dev, NULL, 0x2000);
 
   for (i = 0; i < 2; i++) {
-    frames[i] = new_bo_and_map(dev, NULL, 0x104000);
+    frames[i] = new_bo_and_map(dev, client, 0x104000);
   }
 
   output = new_bo_and_map_gart(dev, client, 0x104000);
@@ -624,9 +624,9 @@ int main() {
   init_vp_params(vp_params, frames);
 
   /* Clear frames */
+/*
   clear_3d(push, frames[1]->offset,
            320, 544, 1, 0x20, 0);
-  return;
   clear_3d(push, frames[1]->offset + 0xaa000,
            320, 272, 1, 0x20, 0x3f000000);
   clear_3d(push, frames[0]->offset,
@@ -635,15 +635,12 @@ int main() {
            320, 272, 1, 0x20, 0);
   clear_3d(push, frames[0]->offset + 0xaa000,
            320, 136, 1, 0x20, 0x3f000000);
-  clear_3d(push, frames[0]->offset + 0xaa000 + 0x2d000 /* 1280 * 0xe0 */,
+  clear_3d(push, frames[0]->offset + 0xaa000 + 0x2d000, // 1280 * 0xe0
            320, 136, 1, 0x20, 0x3f000000);
+*/
 
-  sleep(1); /* cheap semaphore */
-  /* copy the frame before deblocking */
-  copy_buffer(push, frames[0], output);
-  sleep(1);
-  //write(1, output->map, 0xaa000 + 0x55000);
-  return 0;
+  memset(frames[0]->map, 0, frames[0]->size);
+  memset(frames[1]->map, 0, frames[1]->size);
 
   /* Wait for the mbring/vpring clearing */
   BEGIN_NV04(push, 4, 0x10, 4);
@@ -728,37 +725,10 @@ int main() {
   PUSH_DATA (push, 0);
   PUSH_KICK (push);
 
-  *(uint32_t *)vp_sem->map = 0;
-
-  /* Set the semaphore */
-  BEGIN_NV04(push, 2, 0x610, 3);
-  PUSH_DATAh(push, vp_sem->offset);
-  PUSH_DATA (push, vp_sem->offset);
-  PUSH_DATA (push, 2);
-
-  /* Write to the semaphore location */
-  BEGIN_NV04(push, 2, 0x304, 1);
-  PUSH_DATA (push, 1);
-  PUSH_KICK (push);
-
-  /* Wait for the semaphore to get written */
-  BEGIN_NV04(push, 4, 0x10, 4);
-  PUSH_DATAh(push, vp_sem->offset);
-  PUSH_DATA (push, vp_sem->offset);
-  PUSH_DATA (push, 2);
-  PUSH_DATA (push, 1); /* wait for sem == 1 */
-  PUSH_KICK (push);
-
-  /* copy the frame before deblocking */
-  copy_buffer(push, frames[0], output);
-  sleep(10);
-  write(1, output->map, 0xaa000 + 0x55000);
-  return 0;
-
   /* VP step 2 */
   BEGIN_NV04(push, 2, 0x400, 5);
   PUSH_DATA (push, 0x54530201);
-  PUSH_DATA (push, vp_params->offset >> 8);
+  PUSH_DATA (push, (vp_params->offset >> 8) + 0x4);
   PUSH_DATA (push, (vpring->offset >> 8) + 0x4d63);
   PUSH_DATA (push, frames[0]->offset >> 8);
   PUSH_DATA (push, frames[0]->offset >> 8);
@@ -784,6 +754,27 @@ int main() {
   PUSH_DATA (push, 0x101);
   PUSH_KICK (push);
 
+  /* Set the semaphore */
+  BEGIN_NV04(push, 2, 0x610, 3);
+  PUSH_DATAh(push, vp_sem->offset);
+  PUSH_DATA (push, vp_sem->offset);
+  PUSH_DATA (push, 3);
+
+  /* Write to the semaphore location */
+  BEGIN_NV04(push, 2, 0x304, 1);
+  PUSH_DATA (push, 1);
+  PUSH_KICK (push);
+
+  /* Wait for the semaphore to get written */
+  BEGIN_NV04(push, 4, 0x10, 4);
+  PUSH_DATAh(push, vp_sem->offset);
+  PUSH_DATA (push, vp_sem->offset);
+  PUSH_DATA (push, 3);
+  PUSH_DATA (push, 1); /* wait for sem == 3 */
+  PUSH_KICK (push);
+
+  copy_buffer(push, frames[0], output);
+
   fprintf(stderr, "%x\n", *(uint32_t *)vp_sem->map);
 
   sleep(1);
@@ -793,7 +784,7 @@ int main() {
   sleep(1);
 
   fprintf(stderr, "%x\n", *(uint32_t *)vp_sem->map);
-  //write(1, frames[0]->map, frames[0]->size);
+  write(1, output->map, 0xaa000 + 0x55000);
 
   return 0;
 }
