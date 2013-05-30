@@ -187,6 +187,7 @@ copy_to_linear(struct nouveau_pushbuf *push, uint64_t from, uint64_t to,
 
 static void
 copy_buffer(struct nouveau_pushbuf *push, struct nouveau_bo *from, struct nouveau_bo *to) {
+  /*
   copy_to_linear(push, from->offset, to->offset + 0 * 0x7d00, 1280, 272, 25, 0);
   copy_to_linear(push, from->offset, to->offset + 1 * 0x7d00, 1280, 272, 25, 25);
   copy_to_linear(push, from->offset, to->offset + 2 * 0x7d00, 1280, 272, 25, 50);
@@ -198,7 +199,10 @@ copy_buffer(struct nouveau_pushbuf *push, struct nouveau_bo *from, struct nouvea
   copy_to_linear(push, from->offset, to->offset + 8 * 0x7d00, 1280, 272, 25, 200);
   copy_to_linear(push, from->offset, to->offset + 9 * 0x7d00, 1280, 272, 25, 225);
   copy_to_linear(push, from->offset, to->offset + 10 * 0x7d00, 1280, 272, 22, 250);
+  */
+  copy_to_linear(push, from->offset, to->offset, 1280, 272, 272, 0);
 
+  /*
   copy_to_linear(push, from->offset + 0x55000, to->offset + 0x55000 + 0 * 0x7d00, 1280, 272, 25, 0);
   copy_to_linear(push, from->offset + 0x55000, to->offset + 0x55000 + 1 * 0x7d00, 1280, 272, 25, 25);
   copy_to_linear(push, from->offset + 0x55000, to->offset + 0x55000 + 2 * 0x7d00, 1280, 272, 25, 50);
@@ -210,7 +214,10 @@ copy_buffer(struct nouveau_pushbuf *push, struct nouveau_bo *from, struct nouvea
   copy_to_linear(push, from->offset + 0x55000, to->offset + 0x55000 + 8 * 0x7d00, 1280, 272, 25, 200);
   copy_to_linear(push, from->offset + 0x55000, to->offset + 0x55000 + 9 * 0x7d00, 1280, 272, 25, 225);
   copy_to_linear(push, from->offset + 0x55000, to->offset + 0x55000 + 10 * 0x7d00, 1280, 272, 22, 250);
+  */
+  copy_to_linear(push, from->offset + 0x55000, to->offset + 0x55000, 1280, 272, 272, 0);
 
+  /*
   copy_to_linear(push, from->offset + 0xaa000, to->offset + 0xaa000 + 0 * 0x7d00,
                  1280, 136, 25, 0);
   copy_to_linear(push, from->offset + 0xaa000, to->offset + 0xaa000 + 1 * 0x7d00,
@@ -223,8 +230,11 @@ copy_buffer(struct nouveau_pushbuf *push, struct nouveau_bo *from, struct nouvea
                  1280, 136, 25, 100);
   copy_to_linear(push, from->offset + 0xaa000, to->offset + 0xaa000 + 5 * 0x7d00,
                  1280, 136, 11, 125);
+  */
+  copy_to_linear(push, from->offset + 0xaa000, to->offset + 0xaa000, 1280, 136, 136, 0);
 
   /* Round up number of lines to 16, so 2d000 offset on source. */
+  /*
   copy_to_linear(push, from->offset + 0xaa000 + 0x2d000, to->offset + 0xaa000 + 0x2a800 + 0 * 0x7d00,
                  1280, 136, 25, 0);
   copy_to_linear(push, from->offset + 0xaa000 + 0x2d000, to->offset + 0xaa000 + 0x2a800 + 1 * 0x7d00,
@@ -237,6 +247,9 @@ copy_buffer(struct nouveau_pushbuf *push, struct nouveau_bo *from, struct nouvea
                  1280, 136, 25, 100);
   copy_to_linear(push, from->offset + 0xaa000 + 0x2d000, to->offset + 0xaa000 + 0x2a800 + 5 * 0x7d00,
                  1280, 136, 11, 125);
+  */
+  copy_to_linear(push, from->offset + 0xaa000 + 0x2d000, to->offset + 0xaa000 + 0x2a800, 1280, 136, 136, 0);
+
   PUSH_KICK(push);
 }
 
@@ -287,7 +300,7 @@ load_bitstream(struct nouveau_bo *data) {
   arr[0x140 / 4 + 1] = 0x1;
   arr[0x140 / 4 + 3] = 0x1;
   arr[0x150 / 4 + 0] = 0x1;
-  arr[0x1e0 / 4 + 2] = 0x1;
+  arr[0x1e0 / 4 + 1] = 0x1;
   arr[0x320 / 4 + 0] = 0x10000;
   arr[0x320 / 4 + 1] = 0x10000;
   arr[0x320 / 4 + 2] = 0x10000;
@@ -639,11 +652,11 @@ int main() {
            320, 136, 1, 0x20, 0x3f000000);
 */
 
-  memset(frames[0]->map, 0, frames[0]->size);
-  memset(frames[1]->map, 0, frames[1]->size);
+  memset(frames[0]->map, 0xff, frames[0]->size);
+  memset(frames[1]->map, 0xff, frames[1]->size);
 
   /* Wait for the mbring/vpring clearing */
-  BEGIN_NV04(push, 4, 0x10, 4);
+  BEGIN_NV04(push, 1, 0x10, 4);
   PUSH_DATAh(push, bsp_sem->offset);
   PUSH_DATA (push, bsp_sem->offset);
   PUSH_DATA (push, 0);
@@ -668,7 +681,7 @@ int main() {
   PUSH_DATA (push, 0x3fe000);
   PUSH_DATA (push, 0x4d6300);
   PUSH_DATA (push, 0x1fe00);
-  PUSH_DATA (push, (vpring->offset >> 8) + 0x4f61);
+  PUSH_DATA (push, (vpring->offset >> 8) + 0x4f61); /* 0x4d63 + 0x1fe */
   PUSH_DATA (push, 0x654321);
   PUSH_DATA (push, 0);
   PUSH_DATA (push, 0x100008);
@@ -688,11 +701,11 @@ int main() {
 
   /* Write 1 to the semaphore location */
   BEGIN_NV04(push, 1, 0x304, 1);
-  PUSH_DATA (push, 1);
+  PUSH_DATA (push, 0x101);
   PUSH_KICK (push);
 
   /* Wait for the semaphore to get written */
-  BEGIN_NV04(push, 4, 0x10, 4);
+  BEGIN_NV04(push, 2, 0x10, 4);
   PUSH_DATAh(push, bsp_sem->offset);
   PUSH_DATA (push, bsp_sem->offset);
   PUSH_DATA (push, 1);
@@ -781,9 +794,6 @@ int main() {
 
   fprintf(stderr, "%x\n", *(uint32_t *)vp_sem->map);
 
-  sleep(1);
-
-  fprintf(stderr, "%x\n", *(uint32_t *)vp_sem->map);
   write(1, output->map, 0xaa000 + 0x55000);
 
   return 0;
