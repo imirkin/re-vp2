@@ -664,7 +664,7 @@ int main() {
            320, 272, 1, 0x20, 0);
   clear_3d(push, frames[0]->offset + 0xaa000,
            320, 136, 1, 0x20, 0x3f000000);
-  clear_3d(push, frames[0]->offset + 0xaa000 + 0x2d000, // 1280 * 0xe0
+  clear_3d(push, frames[0]->offset + 0xaa000 + 0x2d000, // 1280 * 0x90
            320, 136, 1, 0x20, 0x3f000000);
 */
 
