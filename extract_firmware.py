@@ -62,6 +62,26 @@ BLOBS = {
         "start": user_prefix + "\x04",
         "length": 0x1bffc,
     },
+    "nv84_vp-mpeg12": {
+        "data": user,
+        "start": user_prefix + "\x4c",
+        "length": 0x22084,
+    },
+    "nv84_vp-vc1-1": {
+        "data": user,
+        "start": user_prefix + "\x7c",
+        "length": 0x2cd24,
+    },
+    "nv84_vp-vc1-2": {
+        "data": user,
+        "start": user_prefix + "\xa4",
+        "length": 0x1535c,
+    },
+    "nv84_vp-vc1-3": {
+        "data": user,
+        "start": user_prefix + "\x34",
+        "length": 0x133bc,
+    },
 }
 
 for name, v in BLOBS.iteritems():
