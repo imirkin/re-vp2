@@ -2,6 +2,7 @@
 
 import mmap
 import os
+import re
 import sys
 import tempfile
 import urllib
@@ -168,31 +169,41 @@ PATCHES = [
     },
 ]
 
-for name, v in BLOBS.iteritems():
-    data = v["data"]
-    start = v["start"]
-    length = v["length"]
-    pred = v.get("pred")
-    links = v.get("links")
-    for i in xrange(data.size()):
-        if data[i:i+len(start)] == start:
+# Build a regex on the start data to speed things along.
+start_re = "|".join(re.escape(v["start"]) for v in BLOBS.itervalues())
+files = set(v["data"] for v in BLOBS.itervalues())
+
+done = set()
+
+for data in files:
+    for match in re.finditer(start_re, data):
+        for name, v in BLOBS.iteritems():
+            if name in done or data != v["data"] or match.group(0) != v["start"]:
+                continue
+
+            i = match.start(0)
+            pred = v.get("pred")
             if pred and not pred(data, i):
                 continue
+
+            length = v["length"]
+            links = v.get("links", [])
+
             with open(os.path.join(cwd, name), "w") as f:
                 f.write(data[i:i+length])
-            break
-    else:
-        print "Firmware %s not found, ignoring." % name
-        continue
 
-    if links:
-        for link in links:
-            try:
-                os.unlink(link)
-            except:
-                pass
-            os.symlink(name, link)
+            done.add(name)
+            for link in links:
+                try:
+                    os.unlink(link)
+                except:
+                    pass
+                os.symlink(name, link)
 
+for name in set(BLOBS) - done:
+    print "Firmware %s not found, ignoring." % name
+
+# TODO: When there are multiple patches, switch this to the regex method
 for v in PATCHES:
     data = v["data"]
     start = v["start"]
