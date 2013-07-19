@@ -38,13 +38,18 @@ vp2_user_prefix = "\xce\xab\x55\xee\x20\x00\x00\xd0\x00\x00\x00\xd0"
 vp4_user_prefix = "\x64\x00\xf0\x20\x64\x00\xf1\x20\x64\x00\xf2\x20"
 vp4_vc1_prefix = "\x43\x00\x00\x34" * 2
 
-VP2_CHIPS = ["nv84"]
-VP4_CHIPS = ["nva3"]
+# List of chip revisions since the fuc loader expects nvXX_fucXXX files
+VP2_CHIPS = ["nv84"] # there are more, but no need for more symlinks
+VP3_CHIPS = ["nv98", "nvaa", "nvac"]
+VP4_0_CHIPS = ["nva3", "nva5", "nva8", "nvaf"] # nvaf is 4.1, but same fw
+VP4_2_CHIPS = ["nvc0", "nvc1", "nvc3", "nvc4", "nvc8", "nvce", "nvcf", "nvd7"]
+VP5_CHIPS = ["nvd9", "nve4", "nve6", "nve7", "nvf0", "nv108"]
 
 def links(chips, tail):
     return list("%s_%s" % (chip, tail) for chip in chips)
 
 BLOBS = {
+    # VP2 kernel xuc
     "nv84_bsp": {
         "data": kernel,
         "start": "\xcd\xab\x55\xee\x44\x46",
@@ -58,28 +63,30 @@ BLOBS = {
         "links": links(VP2_CHIPS, "xuc00f"),
     },
 
+    # VP4.0 kernel fuc
     "nva3_bsp": {
         "data": kernel,
         "start": "\xf1\x97\x00\x42\xcf\x99",
         "length": 0x10200,
         "pred": lambda data, i: data[i+8*11+1] == '\xcf',
-        "links": links(VP4_CHIPS, "fuc084"),
+        "links": links(VP4_0_CHIPS, "fuc084"),
     },
     "nva3_vp": {
         "data": kernel,
         "start": "\xf1\x97\x00\x42\xcf\x99",
         "length": 0xc600,
         "pred": lambda data, i: data[i+8*11+1] == '\x9e',
-        "links": links(VP4_CHIPS, "fuc085"),
+        "links": links(VP4_0_CHIPS, "fuc085"),
     },
     "nva3_ppp": {
         "data": kernel,
         "start": "\xf1\x97\x00\x42\xcf\x99",
         "length": 0x3f00,
         "pred": lambda data, i: data[i+8*11+1] == '\x36',
-        "links": links(VP4_CHIPS, "fuc086"),
+        "links": links(VP4_0_CHIPS, "fuc086"),
     },
 
+    # VP2 user vuc
     "nv84_bsp-h264": {
         "data": user,
         "start": vp2_user_prefix + "\x88",
@@ -116,6 +123,7 @@ BLOBS = {
         "length": 0x133bc,
     },
 
+    # VP4.x user vuc
     "vuc-mpeg12-0": {
         "data": user,
         "start": vp4_user_prefix,
@@ -152,21 +160,24 @@ BLOBS = {
 # weird. Perhaps it's done differently for different chipsets, but I
 # don't currently have enough data to determine that.
 PATCHES = [
-    {
-        "data": kernel,
-        "start": "\xf7\x92\xef\xce\x9e\x49\x26\xce",
-        "length": 48 + 96 + 16 * 5,
-        "file": "nva3_bsp",
-        "patches": [
-            {"offset": 1104, "length": 48},
-            {"offset": 1168, "length": 96},
-            {"offset": 55552, "length": 16},
-            {"offset": 58464, "length": 16},
-            {"offset": 61216, "length": 16},
-            {"offset": 64816, "length": 16},
-            {"offset": 65280, "length": 16},
-        ],
-    },
+    # It has been suggested that these patches don't really
+    # matter. Ignore them for now.
+    #
+    # {
+    #     "data": kernel,
+    #     "start": "\xf7\x92\xef\xce\x9e\x49\x26\xce",
+    #     "length": 48 + 96 + 16 * 5,
+    #     "file": "nva3_bsp",
+    #     "patches": [
+    #         {"offset": 1104, "length": 48},
+    #         {"offset": 1168, "length": 96},
+    #         {"offset": 55552, "length": 16},
+    #         {"offset": 58464, "length": 16},
+    #         {"offset": 61216, "length": 16},
+    #         {"offset": 64816, "length": 16},
+    #         {"offset": 65280, "length": 16},
+    #     ],
+    # },
 ]
 
 # Build a regex on the start data to speed things along.
