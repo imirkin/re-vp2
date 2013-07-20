@@ -34,7 +34,9 @@ kernel = mmap.mmap(kernel_f.fileno(), 0, access=mmap.ACCESS_READ)
 user_f = open("NVIDIA-Linux-x86_64-%s/libnvcuvid.so.%s" % (VERSION, VERSION), "r")
 user = mmap.mmap(user_f.fileno(), 0, access=mmap.ACCESS_READ)
 
+vp2_kernel_prefix = "\xcd\xab\x55\xee\x44"
 vp2_user_prefix = "\xce\xab\x55\xee\x20\x00\x00\xd0\x00\x00\x00\xd0"
+vp4_kernel_prefix = "\xf1\x97\x00\x42\xcf\x99"
 vp4_user_prefix = "\x64\x00\xf0\x20\x64\x00\xf1\x20\x64\x00\xf2\x20"
 vp4_vc1_prefix = "\x43\x00\x00\x34" * 2
 
@@ -52,41 +54,68 @@ BLOBS = {
     # VP2 kernel xuc
     "nv84_bsp": {
         "data": kernel,
-        "start": "\xcd\xab\x55\xee\x44\x46",
+        "start": vp2_kernel_prefix + "\x46",
         "length": 0x16f3c,
         "links": links(VP2_CHIPS, "xuc103"),
     },
     "nv84_vp": {
         "data": kernel,
-        "start": "\xcd\xab\x55\xee\x44\x7c",
+        "start": vp2_kernel_prefix + "\x7c",
         "length": 0x1ae6c,
         "links": links(VP2_CHIPS, "xuc00f"),
     },
 
+    # VP3 kernel fuc
+
     # VP4.0 kernel fuc
     "nva3_bsp": {
         "data": kernel,
-        "start": "\xf1\x97\x00\x42\xcf\x99",
+        "start": vp4_kernel_prefix,
         "length": 0x10200,
         "pred": lambda data, i: data[i+8*11+1] == '\xcf',
         "links": links(VP4_0_CHIPS, "fuc084"),
     },
     "nva3_vp": {
         "data": kernel,
-        "start": "\xf1\x97\x00\x42\xcf\x99",
+        "start": vp4_kernel_prefix,
         "length": 0xc600,
         "pred": lambda data, i: data[i+8*11+1] == '\x9e',
         "links": links(VP4_0_CHIPS, "fuc085"),
     },
     "nva3_ppp": {
         "data": kernel,
-        "start": "\xf1\x97\x00\x42\xcf\x99",
+        "start": vp4_kernel_prefix,
         "length": 0x3f00,
         "pred": lambda data, i: data[i+8*11+1] == '\x36',
         "links": links(VP4_0_CHIPS, "fuc086"),
     },
 
-    # VP2 user vuc
+    # VP4.2 kernel fuc
+    "nvc0_ppp": {
+        "data": kernel,
+        "start": vp4_kernel_prefix,
+        "length": 0x4100,
+        "pred": lambda data, i: data[i+0x59] == '\x38',
+        "links": links(VP4_2_CHIPS, "fuc086") + links(VP5_CHIPS, "fuc086"),
+    },
+
+    # VP5 kernel fuc
+    "nve0_bsp": {
+        "data": kernel,
+        "start": vp4_kernel_prefix,
+        "length": 0x11c00,
+        "pred": lambda data, i: data[i+0xb3] == '\x27',
+        "links": links(VP5_CHIPS, "fuc084"),
+    },
+    "nve0_vp": {
+        "data": kernel,
+        "start": vp4_kernel_prefix,
+        "length": 0xdd00,
+        "pred": lambda data, i: data[i+0xb3] == '\x0a',
+        "links": links(VP5_CHIPS, "fuc085"),
+    },
+
+    # VP2 user xuc
     "nv84_bsp-h264": {
         "data": user,
         "start": vp2_user_prefix + "\x88",
@@ -122,6 +151,8 @@ BLOBS = {
         "start": vp2_user_prefix + "\x34",
         "length": 0x133bc,
     },
+
+    # VP3 user vuc
 
     # VP4.x user vuc
     "vuc-mpeg12-0": {
@@ -178,10 +209,12 @@ PATCHES = [
     #         {"offset": 65280, "length": 16},
     #     ],
     # },
+    #
+    # nve0_bsp also needs a patch
 ]
 
 # Build a regex on the start data to speed things along.
-start_re = "|".join(re.escape(v["start"]) for v in BLOBS.itervalues())
+start_re = "|".join(set(re.escape(v["start"]) for v in BLOBS.itervalues()))
 files = set(v["data"] for v in BLOBS.itervalues())
 
 done = set()
