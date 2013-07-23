@@ -181,6 +181,18 @@ BLOBS = {
         "length": 0x1900,
         "pred": lambda data, i: data[i + 11 * 8 + 1] == '\xff' and data[i + 225] == '\x8c',
     },
+    "vuc-mpeg4-0": {
+        "data": user,
+        "start": vp4_user_prefix,
+        "length": 0x1d00,
+        "pred": lambda data, i: data[i + 61] == '\x30' and data[i + 6923] == '\x00',
+    },
+    "vuc-mpeg4-1": {
+        "data": user,
+        "start": vp4_user_prefix,
+        "length": 0x1d00,
+        "pred": lambda data, i: data[i + 61] == '\x30' and data[i + 6923] == '\x20',
+    },
     "vuc-vc1-0": {
         "data": user,
         "start": vp4_vc1_prefix + vp4_user_prefix,
