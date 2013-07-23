@@ -91,6 +91,20 @@ BLOBS = {
     },
 
     # VP4.2 kernel fuc
+    "nvc0_bsp": {
+        "data": kernel,
+        "start": vp4_kernel_prefix,
+        "length": 0x10d00,
+        "pred": lambda data, i: data[i+0x59] == '\xd8',
+        "links": links(VP4_2_CHIPS, "fuc084"),
+    },
+    "nvc0_vp": {
+        "data": kernel,
+        "start": vp4_kernel_prefix,
+        "length": 0xd300,
+        "pred": lambda data, i: data[i+0x59] == '\xa5',
+        "links": links(VP4_2_CHIPS, "fuc085"),
+    },
     "nvc0_ppp": {
         "data": kernel,
         "start": vp4_kernel_prefix,
@@ -210,7 +224,7 @@ PATCHES = [
     #     ],
     # },
     #
-    # nve0_bsp also needs a patch
+    # nvc0_bsp, nve0_bsp also need a patch. perhaps nvc0_vp as well.
 ]
 
 # Build a regex on the start data to speed things along.
