@@ -233,32 +233,6 @@ BLOBS = {
     },
 }
 
-# Looks like they have logic to patch up certain blobs. Very
-# weird. Perhaps it's done differently for different chipsets, but I
-# don't currently have enough data to determine that.
-PATCHES = [
-    # It has been suggested that these patches don't really
-    # matter. Ignore them for now.
-    #
-    # {
-    #     "data": kernel,
-    #     "start": "\xf7\x92\xef\xce\x9e\x49\x26\xce",
-    #     "length": 48 + 96 + 16 * 5,
-    #     "file": "nva3_bsp",
-    #     "patches": [
-    #         {"offset": 1104, "length": 48},
-    #         {"offset": 1168, "length": 96},
-    #         {"offset": 55552, "length": 16},
-    #         {"offset": 58464, "length": 16},
-    #         {"offset": 61216, "length": 16},
-    #         {"offset": 64816, "length": 16},
-    #         {"offset": 65280, "length": 16},
-    #     ],
-    # },
-    #
-    # nvc0_bsp, nve0_bsp also need a patch. perhaps nvc0_vp as well.
-]
-
 # Build a regex on the start data to speed things along.
 start_re = "|".join(set(re.escape(v["start"]) for v in BLOBS.itervalues()))
 files = set(v["data"] for v in BLOBS.itervalues())
@@ -292,20 +266,3 @@ for data in files:
 
 for name in set(BLOBS) - done:
     print "Firmware %s not found, ignoring." % name
-
-# TODO: When there are multiple patches, switch this to the regex method
-for v in PATCHES:
-    data = v["data"]
-    start = v["start"]
-    length = v["length"]
-    fname = v["file"]
-    for i in xrange(data.size()):
-        if data[i:i+len(start)] == start:
-            with open(os.path.join(cwd, fname), "r+") as f:
-                for p in v["patches"]:
-                    f.seek(p["offset"])
-                    f.write(data[i:i+p["length"]])
-                    i += p["length"]
-            break
-    else:
-        print "Unable to find patch for %s, ignoring." % fname
