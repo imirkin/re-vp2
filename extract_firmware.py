@@ -35,10 +35,6 @@ import urllib
 VERSION = "319.23"
 
 cwd = os.getcwd()
-# dirname = tempfile.mkdtemp()
-# urllib.urlretrieve("http://us.download.nvidia.com/XFree86/Linux-x86_64/%s/NVIDIA-Linux-x86_64-%s.run" % (VERSION, VERSION), os.path.join(dirname, "nv.run"))
-# os.chdir(dirname)
-# os.system("sh nv.run --extract-only")
 if not os.path.exists("NVIDIA-Linux-x86_64-%s" % VERSION):
     print """Please run this in a directory where NVIDIA-Linux-x86_64-%(version)s is a subdir.
 
