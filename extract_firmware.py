@@ -27,27 +27,45 @@ import sys
 import tempfile
 import urllib
 
-# From a limited sample, while the (user) firmware does change from
-# version to version, the starts of the firmware remain the same. When
-# changing the version though, one should look at an mmt trace and see
-# how much data the m2mf channel copies for each thing. The changes
-# are usually on the order of 10s of bytes between versions.
-VERSION = "319.23"
+# The firmware changes fairly rarely. From a limited sample, when the
+# firmware does change, the starts of the firmware remain the
+# same. When changing the version though, one should double-check the
+# sizes, which can be different.
+#
+# This is the list of tested versions that produce the same binaries
+VERSIONS = (
+    "319.17",
+    "319.23",
+    "319.32",
+    "325.08",
+    )
+
+ARCHES = ("x86_64", "x86")
+
+def product(a, b):
+    for x in a:
+        for y in b:
+            yield (x, y)
 
 cwd = os.getcwd()
-if not os.path.exists("NVIDIA-Linux-x86_64-%s" % VERSION):
-    print """Please run this in a directory where NVIDIA-Linux-x86_64-%(version)s is a subdir.
+for (VERSION, ARCH) in product(VERSIONS, ARCHES):
+    if os.path.exists("NVIDIA-Linux-%s-%s" % (ARCH, VERSION)):
+        break
+else:
+    print """Please run this in a directory where NVIDIA-Linux-x86-%(version)s is a subdir.
 
 You can make this happen by running
-wget http://us.download.nvidia.com/XFree86/Linux-x86_64/%(version)s/NVIDIA-Linux-x86_64-%(version)s.run
-sh NVIDIA-Linux-x86_64-%(version)s.run --extract-only
-""" % {"version": VERSION}
+wget http://us.download.nvidia.com/XFree86/Linux-x86/%(version)s/NVIDIA-Linux-x86-%(version)s.run
+sh NVIDIA-Linux-x86-%(version)s.run --extract-only
+
+Note: You can use other versions/arches, see the source for what is acceptable.
+""" % {"version": VERSIONS[-1]}
     sys.exit(1)
 
-kernel_f = open("NVIDIA-Linux-x86_64-%s/kernel/nv-kernel.o" % VERSION, "r")
+kernel_f = open("NVIDIA-Linux-%s-%s/kernel/nv-kernel.o" % (ARCH, VERSION), "r")
 kernel = mmap.mmap(kernel_f.fileno(), 0, access=mmap.ACCESS_READ)
 
-user_f = open("NVIDIA-Linux-x86_64-%s/libnvcuvid.so.%s" % (VERSION, VERSION), "r")
+user_f = open("NVIDIA-Linux-%s-%s/libnvcuvid.so.%s" % (ARCH, VERSION, VERSION), "r")
 user = mmap.mmap(user_f.fileno(), 0, access=mmap.ACCESS_READ)
 
 vp2_kernel_prefix = "\xcd\xab\x55\xee\x44"
