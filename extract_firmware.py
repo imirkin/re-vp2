@@ -71,8 +71,8 @@ user = mmap.mmap(user_f.fileno(), 0, access=mmap.ACCESS_READ)
 vp2_kernel_prefix = "\xcd\xab\x55\xee\x44"
 vp2_user_prefix = "\xce\xab\x55\xee\x20\x00\x00\xd0\x00\x00\x00\xd0"
 vp4_kernel_prefix = "\xf1\x97\x00\x42\xcf\x99"
-vp4_user_prefix = "\x64\x00\xf0\x20\x64\x00\xf1\x20\x64\x00\xf2\x20"
-vp4_vc1_prefix = "\x43\x00\x00\x34" * 2
+vp3_user_prefix = "\x64\x00\xf0\x20\x64\x00\xf1\x20\x64\x00\xf2\x20"
+vp3_vc1_prefix = "\x43\x00\x00\x34" * 2
 
 # List of chip revisions since the fuc loader expects nvXX_fucXXX files
 VP2_CHIPS = ["nv84"] # there are more, but no need for more symlinks
@@ -100,6 +100,27 @@ BLOBS = {
     },
 
     # VP3 kernel fuc
+    "nv98_bsp": {
+        "data": kernel,
+        "start": "\xf1\x07\x00\x10\xf1\x03\x00\x00",
+        "length": 0xac00,
+        "pred": lambda data, i: data[i+2287] == '\x8e',
+        "links": links(VP3_CHIPS, "fuc084"),
+    },
+    "nv98_vp": {
+        "data": kernel,
+        "start": "\xf1\x07\x00\x10\xf1\x03\x00\x00",
+        "length": 0xa500,
+        "pred": lambda data, i: data[i+2287] == '\x95',
+        "links": links(VP3_CHIPS, "fuc085"),
+    },
+    "nv98_ppp": {
+        "data": kernel,
+        "start": "\xf1\x07\x00\x08\xf1\x03\x00\x00",
+        "length": 0x3800,
+        "pred": lambda data, i: data[i+2287] == '\x30',
+        "links": links(VP3_CHIPS, "fuc086"),
+    },
 
     # VP4.0 kernel fuc
     "nva3_bsp": {
@@ -201,49 +222,86 @@ BLOBS = {
     },
 
     # VP3 user vuc
+    "vuc-vp3-mpeg12-0": {
+        "data": user,
+        "start": vp3_user_prefix,
+        "length": 0xb00,
+        "pred": lambda data, i: data[i + 11 * 8] == '\x4a' and data[i + 228] == '\x43',
+    },
+    "vuc-vp3-h264-0": {
+        "data": user,
+        "start": vp3_user_prefix,
+        "length": 0x1600,
+        "pred": lambda data, i: data[i + 11 * 8 + 1] == '\xff' and data[i + 225] == '\x81',
+    },
+    "vuc-vp3-vc1-0": {
+        "data": user,
+        "start": vp3_vc1_prefix + vp3_user_prefix,
+        "length": 0x1d00,
+        "pred": lambda data, i: data[i + 11 * 8 + 1] == '\xf4',
+    },
+    "vuc-vp3-vc1-1": {
+        "data": user,
+        "start": vp3_vc1_prefix + vp3_user_prefix,
+        "length": 0x2100,
+        "pred": lambda data, i: data[i + 11 * 8 + 1] == '\x34',
+    },
+    "vuc-vp3-vc1-2": {
+        "data": user,
+        "start": vp3_vc1_prefix + vp3_user_prefix,
+        "length": 0x2300,
+        "pred": lambda data, i: data[i + 11 * 8 + 1] == '\x98',
+    },
 
     # VP4.x user vuc
-    "vuc-mpeg12-0": {
+    "vuc-vp4-mpeg12-0": {
         "data": user,
-        "start": vp4_user_prefix,
+        "start": vp3_user_prefix,
         "length": 0xc00,
         "pred": lambda data, i: data[i + 11 * 8] == '\x4a' and data[i + 228] == '\x44',
+        "links": ["vuc-mpeg12-0"],
     },
-    "vuc-h264-0": {
+    "vuc-vp4-h264-0": {
         "data": user,
-        "start": vp4_user_prefix,
+        "start": vp3_user_prefix,
         "length": 0x1900,
         "pred": lambda data, i: data[i + 11 * 8 + 1] == '\xff' and data[i + 225] == '\x8c',
+        "links": ["vuc-h264-0"],
     },
-    "vuc-mpeg4-0": {
+    "vuc-vp4-mpeg4-0": {
         "data": user,
-        "start": vp4_user_prefix,
+        "start": vp3_user_prefix,
         "length": 0x1d00,
         "pred": lambda data, i: data[i + 61] == '\x30' and data[i + 6923] == '\x00',
+        "links": ["vuc-mpeg4-0"],
     },
-    "vuc-mpeg4-1": {
+    "vuc-vp4-mpeg4-1": {
         "data": user,
-        "start": vp4_user_prefix,
+        "start": vp3_user_prefix,
         "length": 0x1d00,
         "pred": lambda data, i: data[i + 61] == '\x30' and data[i + 6923] == '\x20',
+        "links": ["vuc-mpeg4-1"],
     },
-    "vuc-vc1-0": {
+    "vuc-vp4-vc1-0": {
         "data": user,
-        "start": vp4_vc1_prefix + vp4_user_prefix,
+        "start": vp3_vc1_prefix + vp3_user_prefix,
         "length": 0x1d00,
         "pred": lambda data, i: data[i + 11 * 8 + 1] == '\xb4',
+        "links": ["vuc-vc1-0"],
     },
-    "vuc-vc1-1": {
+    "vuc-vp4-vc1-1": {
         "data": user,
-        "start": vp4_vc1_prefix + vp4_user_prefix,
+        "start": vp3_vc1_prefix + vp3_user_prefix,
         "length": 0x2100,
         "pred": lambda data, i: data[i + 11 * 8 + 1] == '\x08',
+        "links": ["vuc-vc1-1"],
     },
-    "vuc-vc1-2": {
+    "vuc-vp4-vc1-2": {
         "data": user,
-        "start": vp4_vc1_prefix + vp4_user_prefix,
+        "start": vp3_vc1_prefix + vp3_user_prefix,
         "length": 0x2100,
         "pred": lambda data, i: data[i + 11 * 8 + 1] == '\x6c',
+        "links": ["vuc-vc1-2"],
     },
 }
 
