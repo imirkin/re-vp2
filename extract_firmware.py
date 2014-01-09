@@ -20,12 +20,15 @@
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
 
+import itertools
 import mmap
 import os
 import re
+import struct
 import sys
 import tempfile
 import urllib
+import zlib
 
 # The firmware changes fairly rarely. From a limited sample, when the
 # firmware does change, the starts of the firmware remain the
@@ -339,3 +342,65 @@ for data in files:
 
 for name in set(BLOBS) - done:
     print "Firmware %s not found, ignoring." % name
+
+ARCHIVE_FILES = {
+    0: "fuc409d",
+    1: "fuc409c",
+    2: "fuc41ad",
+    3: "fuc41ac",
+}
+
+ARCHIVE_ORDERS = {
+    "325.15": ["nvc0", "nvc8", "nvc3", "nvc4", "nvce", "nvcf", "nvc1",
+               "nvd7", "nvd9", "nve4", "nve7", "nve6", "nvf0", "nvf1",
+               "nv108"],
+}
+
+# Extract the gzipped archives found inside the kernel driver
+def decompress(prefix, start, s):
+    try:
+        decomp = zlib.decompressobj(-zlib.MAX_WBITS)
+        data = decomp.decompress(s[10:])
+    except Exception, e:
+        print prefix, repr(s[:16]), len(s)
+        print e
+        return False
+    magic, count = struct.unpack("<II", data[:8])
+    if magic != 0:
+        print "Skipping gzip blob at 0x%x (%d bytes)" % (start, len(data))
+        return False
+
+    # Allow valid archives to be skipped
+    if not prefix:
+        return True
+
+    entries = []
+    # Each entry is id, length, offset
+    for i in xrange(count):
+        entry = struct.unpack("<III", data[8 + i * 12:8 + (i + 1) * 12])
+        entries.append(entry)
+
+    for entry in entries:
+        if not entry[0] in ARCHIVE_FILES:
+            continue
+        with open("%s_%s" % (prefix, ARCHIVE_FILES[entry[0]]), "wb") as f:
+            f.write(data[entry[2]:entry[2]+entry[1]])
+            if f.name.endswith("c"):
+                # round code up to the nearest 0x200
+                f.write("\0" * (0x200 - entry[1] % 0x200))
+
+    return True
+
+if VERSION in ARCHIVE_ORDERS:
+    gzip_starts = list(m.start(0) for m in re.finditer(
+        re.escape("\x1f\x8b\x08"), kernel))
+    idx = 0
+    names = ARCHIVE_ORDERS[VERSION]
+    for start, end in itertools.izip(gzip_starts,
+                                     gzip_starts[1:] + [len(kernel)]):
+        if decompress(names[idx], start, kernel[start:end]):
+            idx += 1
+    if idx != len(names):
+        print "Unexpected quantity of archives in blob, graph fw likely wrong."
+else:
+    print "Unknown PGRAPH archive order in this version."
