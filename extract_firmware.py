@@ -83,7 +83,7 @@ VP2_CHIPS = ["nv84"] # there are more, but no need for more symlinks
 VP3_CHIPS = ["nv98", "nvaa", "nvac"]
 VP4_0_CHIPS = ["nva3", "nva5", "nva8", "nvaf"] # nvaf is 4.1, but same fw
 VP4_2_CHIPS = ["nvc0", "nvc1", "nvc3", "nvc4", "nvc8", "nvce", "nvcf"]
-VP5_CHIPS = ["nvd7", "nvd9", "nve4", "nve6", "nve7", "nvf0", "nv108"]
+VP5_CHIPS = ["nvd7", "nvd9", "nve4", "nve6", "nve7", "nvf0", "nvf1", "nv108"]
 
 def links(chips, tail):
     return list("%s_%s" % (chip, tail) for chip in chips)
