@@ -42,6 +42,7 @@ VERSIONS = (
     "319.32",
     "325.08",
     "325.15",
+    "340.32",
     )
 
 ARCHES = ("x86_64", "x86")
@@ -88,6 +89,18 @@ VP5_CHIPS = ["nvd7", "nvd9", "nve4", "nve6", "nve7", "nvf0", "nvf1", "nv108"]
 def links(chips, tail):
     return list("%s_%s" % (chip, tail) for chip in chips)
 
+def vp3_offset():
+    # Note: 340 uses higher offset, 325 uses lower. Guessing 330 as the cutoff.
+    if float(VERSION) < 330:
+        return 2287
+    return 2286
+
+def vp5_offset():
+    # Note: 340 uses higher offset, 325 uses lower. Guessing 330 as the cutoff.
+    if float(VERSION) < 330:
+        return 0xb3
+    return 0xb7
+
 BLOBS = {
     # VP2 kernel xuc
     "nv84_bsp": {
@@ -108,21 +121,21 @@ BLOBS = {
         "data": kernel,
         "start": "\xf1\x07\x00\x10\xf1\x03\x00\x00",
         "length": 0xac00,
-        "pred": lambda data, i: data[i+2287] == '\x8e',
+        "pred": lambda data, i: data[i+vp3_offset()] == '\x8e',
         "links": links(VP3_CHIPS, "fuc084"),
     },
     "nv98_vp": {
         "data": kernel,
         "start": "\xf1\x07\x00\x10\xf1\x03\x00\x00",
         "length": 0xa500,
-        "pred": lambda data, i: data[i+2287] == '\x95',
+        "pred": lambda data, i: data[i+vp3_offset()] == '\x95',
         "links": links(VP3_CHIPS, "fuc085"),
     },
     "nv98_ppp": {
         "data": kernel,
         "start": "\xf1\x07\x00\x08\xf1\x03\x00\x00",
         "length": 0x3800,
-        "pred": lambda data, i: data[i+2287] == '\x30',
+        "pred": lambda data, i: data[i+vp3_offset()] == '\x30',
         "links": links(VP3_CHIPS, "fuc086"),
     },
 
@@ -177,14 +190,14 @@ BLOBS = {
         "data": kernel,
         "start": vp4_kernel_prefix,
         "length": 0x11c00,
-        "pred": lambda data, i: data[i+0xb3] == '\x27',
+        "pred": lambda data, i: data[i+vp5_offset()] == '\x27',
         "links": links(VP5_CHIPS, "fuc084"),
     },
     "nve0_vp": {
         "data": kernel,
         "start": vp4_kernel_prefix,
         "length": 0xdd00,
-        "pred": lambda data, i: data[i+0xb3] == '\x0a',
+        "pred": lambda data, i: data[i+vp5_offset()] == '\x0a',
         "links": links(VP5_CHIPS, "fuc085"),
     },
 
