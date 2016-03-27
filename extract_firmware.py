@@ -356,13 +356,6 @@ for data in files:
 for name in set(BLOBS) - done:
     print "Firmware %s not found, ignoring." % name
 
-ARCHIVE_FILES = {
-    0: "fuc409d",
-    1: "fuc409c",
-    2: "fuc41ad",
-    3: "fuc41ac",
-}
-
 ARCHIVE_ORDERS = {
     "325.15": ["nvc0", "nvc8", "nvc3", "nvc4", "nvce", "nvcf", "nvc1",
                "nvd7", "nvd9", "nve4", "nve7", "nve6", "nvf0", "nvf1",
@@ -392,15 +385,6 @@ def decompress(prefix, start, s):
     for i in xrange(count):
         entry = struct.unpack("<III", data[8 + i * 12:8 + (i + 1) * 12])
         entries.append(entry)
-
-    for entry in entries:
-        if not entry[0] in ARCHIVE_FILES:
-            continue
-        with open("%s_%s" % (prefix, ARCHIVE_FILES[entry[0]]), "wb") as f:
-            f.write(data[entry[2]:entry[2]+entry[1]])
-            if f.name.endswith("c"):
-                # round code up to the nearest 0x200
-                f.write("\0" * (0x200 - entry[1] % 0x200))
 
     return True
 
